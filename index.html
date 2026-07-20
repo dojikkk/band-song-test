@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>숨긴 유튜브 플레이어 — 재생 테스트</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+  :root {
+    --bg: #131118; --panel: #1C1923; --panel-2: #242030;
+    --line: #322D40; --text: #F1EEE8; --text-2: #A79FB8; --text-3: #6B6480;
+    --spot: #FFB454; --spot-deep: #2E2417;
+    --violet: #A28BF0; --violet-deep: #221D33;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0B0A0E;
+    font-family: "Pretendard Variable", Pretendard, sans-serif;
+    color: var(--text);
+    display: flex; justify-content: center;
+    min-height: 100vh; padding: 20px 0;
+    overflow-x: hidden;            /* 가로 삐져나감 방지 */
+  }
+  .phone {
+    position: relative;            /* 숨긴 플레이어의 기준점 */
+    width: 100%; max-width: 390px; /* 좁은 폰에서 뷰포트를 넘지 않게 */
+    background: var(--bg);
+    border-radius: 26px; border: 1px solid var(--line);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    min-height: 720px;
+  }
+  @media (max-width: 420px) {
+    body { padding: 0; }
+    .phone { border-radius: 0; border: none; min-height: 100vh; }
+  }
+
+  /* ── 숨긴 유튜브 우리(cage) ──
+     플레이어는 240x240으로 정상 생성(유튜브 최소크기 충족),
+     부모가 1px로 잘라내서 유저 눈엔 안 보임.
+     .phone(position:relative) 안에 있어서 회전/스크롤에 안 어긋남. */
+  .yt-cage {
+    position: absolute; top: 0; left: 0;
+    width: 1px; height: 1px;
+    overflow: hidden;
+    z-index: -1; pointer-events: none;
+  }
+  .yt-cage.reveal {
+    width: 240px; height: 240px;
+    z-index: 50; top: 12px; left: 12px;
+    outline: 3px dashed var(--spot);
+    border-radius: 8px;
+  }
+  #ytplayer { width: 240px; height: 240px; border: 0; }
+
+  header { padding: 20px 20px 14px; border-bottom: 1px solid var(--line); }
+  .h-title { font-size: 18px; font-weight: 800; letter-spacing: -0.02em; }
+  .h-sub { font-size: 12px; color: var(--text-3); margin-top: 4px; line-height: 1.5; }
+
+  main { flex: 1; overflow-y: auto; padding: 16px; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 14px; margin-bottom: 12px;
+  }
+  .card.active { border-color: var(--violet); }
+  .card-top { display: flex; gap: 12px; align-items: center; }
+  .art {
+    width: 54px; height: 54px; border-radius: 10px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px; position: relative; overflow: hidden;
+  }
+  .art .ring {
+    position: absolute; inset: 0; border-radius: 10px;
+    border: 2px solid transparent;
+  }
+  .card.playing .art .ring {
+    border-color: var(--violet);
+    animation: spin 2s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .meta { flex: 1; min-width: 0; }
+  .song-title { font-size: 14.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .song-sub { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+  .hl-tag {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 11px; font-weight: 600; color: var(--violet);
+    background: var(--violet-deep); border: 1px solid #35304D;
+    padding: 3px 8px; border-radius: 999px; margin-top: 5px;
+    font-family: ui-monospace, monospace;
+  }
+
+  .play-btn {
+    width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0;
+    border: none; cursor: pointer;
+    background: var(--spot); color: #1A1206;
+    font-size: 18px; display: flex; align-items: center; justify-content: center;
+    transition: transform .1s;
+  }
+  .play-btn:active { transform: scale(0.9); }
+  .play-btn:disabled { background: var(--panel-2); color: var(--text-3); cursor: default; }
+
+  /* 파형 */
+  .wave { display: flex; align-items: flex-end; gap: 2px; height: 34px; margin-top: 12px; }
+  .wave span { flex: 1; background: #3B3552; border-radius: 2px; min-height: 12%; transition: background .12s; }
+  .wave span.played { background: var(--violet); }
+  .time {
+    display: flex; justify-content: space-between;
+    font-family: ui-monospace, monospace; font-size: 11px;
+    color: var(--text-3); margin-top: 6px;
+  }
+  .err { font-size: 12px; color: #FF8A7A; margin-top: 10px; display: none; }
+  .err.show { display: block; }
+
+  .tester {
+    background: var(--panel); border: 1px dashed var(--line);
+    border-radius: 14px; padding: 14px; margin-top: 4px;
+  }
+  .tester h3 { font-size: 13px; font-weight: 700; color: var(--text-2); margin-bottom: 4px; }
+  .tester p { font-size: 11.5px; color: var(--text-3); line-height: 1.5; margin-bottom: 10px; }
+  .tester input {
+    width: 100%; font-family: inherit; font-size: 13px;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: 10px 12px; color: var(--text); outline: none; margin-bottom: 8px;
+  }
+  .tester input:focus { border-color: var(--violet); }
+  .row2 { display: flex; gap: 8px; }
+  .row2 input { flex: 1; }
+  .tester button {
+    width: 100%; font-family: inherit; font-size: 13.5px; font-weight: 800;
+    background: var(--violet); color: #16101F; border: none;
+    border-radius: 8px; padding: 11px; cursor: pointer; margin-top: 2px;
+  }
+
+  .debug-bar {
+    position: sticky; bottom: 0;
+    background: var(--panel-2); border-top: 1px solid var(--line);
+    padding: 12px 16px; display: flex; align-items: center; gap: 10px;
+    font-size: 12px; color: var(--text-3);
+  }
+  .debug-btn {
+    font-family: inherit; font-size: 12px; font-weight: 700;
+    background: var(--bg); color: var(--text-2);
+    border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 12px; cursor: pointer; white-space: nowrap;
+  }
+  .debug-btn.on { background: var(--spot); color: #1A1206; border-color: var(--spot); }
+  #status { flex: 1; text-align: right; font-family: ui-monospace, monospace; }
+</style>
+</head>
+<body>
+<div class="phone" id="phone">
+
+  <!-- 숨긴 유튜브 플레이어 (여기 딱 하나, 곡끼리 공유) -->
+  <div class="yt-cage" id="ytCage"><div id="ytplayer"></div></div>
+
+  <header>
+    <div class="h-title">🎧 숨긴 유튜브 재생 테스트</div>
+    <div class="h-sub">재생 버튼 → 하이라이트 구간만 자동 재생 → 자동 정지.<br>유튜브 UI·추천영상 안 보임. 폰 돌려보고 스크롤해도 안 삐져나오는지 확인!</div>
+  </header>
+
+  <main id="list"></main>
+
+  <div class="debug-bar">
+    <button class="debug-btn" id="dbg" onclick="toggleReveal()">🐛 숨긴 플레이어 보기</button>
+    <span id="status">준비 중…</span>
+  </div>
+</div>
+
+<script src="https://www.youtube.com/iframe_api"></script>
+<script>
+// ── 테스트용 곡 (임베드 잘 되는 영상 위주) ──
+// 유튜브 공식 문서 예제 영상 = 임베드 보장됨 (재생 확인용)
+const songs = [
+  { id:'s1', title:'테스트 A (임베드 보장 영상)', sub:'하이라이트 0:15–0:40', vid:'M7lc1UVf-VE', start:15, end:40, emoji:'🎸', color:'#2A2440' },
+  { id:'s2', title:'테스트 B (임베드 보장 영상)', sub:'하이라이트 0:30–0:55', vid:'M7lc1UVf-VE', start:30, end:55, emoji:'🌀', color:'#1D3230' },
+  { id:'s3', title:'테스트 C (Big Buck Bunny)', sub:'하이라이트 0:20–0:45', vid:'aqz-KE-bpKQ', start:20, end:45, emoji:'🌊', color:'#17293D' },
+];
+
+let player, ready=false, active=null, timer=null;
+
+// 재생/정지 아이콘 — 이모지(▶/❚❚)는 기기마다 컬러 이모지로 깨져서 SVG로 고정
+const ICON_PLAY  = '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
+const ICON_PAUSE = '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
+
+function setStatus(t){ document.getElementById('status').textContent = t; }
+
+// 유튜브 API 준비되면 호출됨
+function onYouTubeIframeAPIReady(){
+  player = new YT.Player('ytplayer', {
+    width:240, height:240, videoId:'',
+    playerVars:{ controls:0, rel:0, playsinline:1, modestbranding:1, iv_load_policy:3 },
+    events:{
+      onReady: ()=>{ ready=true; setStatus('준비 완료'); },
+      onStateChange: onState,
+      onError: onErr,
+    }
+  });
+}
+
+function onState(e){
+  const card = active && document.querySelector(`[data-card="${active.id}"]`);
+  if(!card) return;
+  if(e.data === YT.PlayerState.PLAYING){ card.classList.add('playing'); setStatus('재생 중 ▶'); }
+  if(e.data === YT.PlayerState.PAUSED){ card.classList.remove('playing'); }
+  if(e.data === YT.PlayerState.ENDED){ stopAll(); }
+}
+
+function onErr(){
+  if(!active) return;
+  const err = document.querySelector(`[data-card="${active.id}"] .err`);
+  if(err) err.classList.add('show');
+  setStatus('임베드 차단됨 ✕');
+  stopAll();
+}
+
+function stopAll(){
+  if(timer){ clearInterval(timer); timer=null; }
+  if(player && player.pauseVideo) try{ player.pauseVideo(); }catch(e){}
+  document.querySelectorAll('.card').forEach(c=>{ c.classList.remove('playing','active'); });
+  document.querySelectorAll('.play-btn').forEach(b=> b.innerHTML=ICON_PLAY);
+  active=null;
+}
+
+function playSong(s){
+  if(!ready){ setStatus('아직 준비 중…'); return; }
+  // 같은 곡 다시 누르면 정지 토글
+  if(active && active.id===s.id){ stopAll(); return; }
+  stopAll();
+  active = s;
+  const card = document.querySelector(`[data-card="${s.id}"]`);
+  if(!card){ setStatus('카드를 찾을 수 없음 ✕'); active=null; return; }  // 안전장치
+  const btn = card.querySelector('.play-btn');
+  const err = card.querySelector('.err');
+  err.classList.remove('show');
+  card.classList.add('active');
+  btn.innerHTML=ICON_PAUSE;
+  setStatus('불러오는 중…');
+
+  // 하이라이트 시작 지점부터 재생
+  player.loadVideoById({ videoId:s.vid, startSeconds:s.start, endSeconds:s.end });
+  player.playVideo();
+
+  // 진행 감시: 파형 채우고, 끝 시각 넘으면 정지
+  const bars = card.querySelectorAll('.wave span');
+  const curEl = card.querySelector('.cur');
+  timer = setInterval(()=>{
+    if(!player.getCurrentTime) return;
+    const t = player.getCurrentTime();
+    const prog = Math.max(0, Math.min(1, (t - s.start)/(s.end - s.start)));
+    const lit = Math.floor(prog * bars.length);
+    bars.forEach((b,i)=> b.classList.toggle('played', i<lit));
+    curEl.textContent = fmt(t);
+    if(t >= s.end){ stopAll(); setStatus('구간 끝 · 자동 정지 ✓'); }
+  }, 250);
+}
+
+function fmt(s){ s=Math.floor(s); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); }
+
+// 회전/리사이즈 안전장치: 위치는 부모가 잡아줘서 안 어긋남.
+// 혹시 재생이 끊기면 현재 위치로 다시 이어붙임.
+let lastT=0;
+setInterval(()=>{ if(player&&player.getCurrentTime&&active) lastT=player.getCurrentTime(); }, 500);
+window.addEventListener('orientationchange', ()=>{
+  if(!active) return;
+  setTimeout(()=>{
+    if(player.getPlayerState && player.getPlayerState()!==YT.PlayerState.PLAYING){
+      try{ player.seekTo(lastT,true); player.playVideo(); }catch(e){}
+    }
+  }, 400);
+});
+
+function toggleReveal(){
+  const cage=document.getElementById('ytCage'), btn=document.getElementById('dbg');
+  cage.classList.toggle('reveal'); btn.classList.toggle('on');
+}
+
+// 직접 링크 테스트
+function testCustom(){
+  const url=document.getElementById('inpUrl').value.trim();
+  const st=parseTime(document.getElementById('inpStart').value);
+  const en=parseTime(document.getElementById('inpEnd').value);
+  const vid=extractId(url);
+  if(!vid){ alert('유튜브 링크를 다시 확인해줘'); return; }
+  const start = st||0;
+  const end = en || (start+30);
+  if(end <= start){ alert('끝 시각이 시작보다 뒤여야 해'); return; }
+  const s = { id:'custom', title:'내가 넣은 곡', sub:vid, vid, start, end, emoji:'🎵', color:'#2E2417' };
+  // 커스텀 곡도 자기 카드를 가져야 playSong이 파형·시간·경고를 그림
+  document.getElementById('customResult').innerHTML = cardHTML(s);
+  playSong(s);
+}
+function parseTime(v){ if(!v) return 0; if(v.includes(':')){ const[m,s]=v.split(':').map(Number); return m*60+(s||0);} return Number(v)||0; }
+function extractId(url){
+  const m = url.match(/(?:youtu\.be\/|v=|\/embed\/|\/shorts\/)([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : (url.length===11 ? url : null);
+}
+
+// 카드 하나의 HTML (프리셋·커스텀 공용)
+function cardHTML(s){ return `
+    <div class="card" data-card="${s.id}">
+      <div class="card-top">
+        <div class="art" style="background:${s.color}"><div class="ring"></div>${s.emoji}</div>
+        <div class="meta">
+          <div class="song-title">${s.title}</div>
+          <div class="song-sub">${s.sub}</div>
+          <span class="hl-tag">✦ ${fmt(s.start)}–${fmt(s.end)}</span>
+        </div>
+        <button class="play-btn" onclick='playSong(${JSON.stringify(s)})'>${ICON_PLAY}</button>
+      </div>
+      <div class="wave">${Array.from({length:28},(_,i)=>`<span style="height:${20+Math.abs(Math.sin(i*1.6+s.start))*75}%"></span>`).join('')}</div>
+      <div class="time"><span class="cur">0:00</span><span>${fmt(s.end)}</span></div>
+      <div class="err">⚠ 이 영상은 임베드가 막혀있어요 (밴드 곡에서도 가끔 생김 — 다른 링크로!)</div>
+    </div>`; }
+
+// 렌더
+function render(){
+  const el=document.getElementById('list');
+  el.innerHTML = songs.map(cardHTML).join('') + `
+    <div class="tester">
+      <h3>🔗 네 밴드 곡으로 직접 테스트</h3>
+      <p>유튜브 링크 붙여넣고 하이라이트 구간 입력 → 진짜 되는지 확인해봐</p>
+      <input id="inpUrl" placeholder="https://youtu.be/..." />
+      <div class="row2">
+        <input id="inpStart" placeholder="시작 (예: 1:23)" />
+        <input id="inpEnd" placeholder="끝 (예: 1:58)" />
+      </div>
+      <button onclick="testCustom()">이 구간만 재생</button>
+      <div id="customResult"></div>
+    </div>`;
+}
+render();
+</script>
+</body>
+</html>
