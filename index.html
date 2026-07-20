@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>숨긴 유튜브 플레이어 — 재생 테스트</title>
+<title>밴드 곡 순위 매기기</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <style>
   :root {
@@ -81,7 +81,7 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   .meta { flex: 1; min-width: 0; }
   .song-title { font-size: 14.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .song-sub { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+  .song-sub { font-size: 12px; color: var(--text-3); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hl-tag {
     display: inline-flex; align-items: center; gap: 4px;
     font-size: 11px; font-weight: 600; color: var(--violet);
@@ -94,11 +94,10 @@
     width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0;
     border: none; cursor: pointer;
     background: var(--spot); color: #1A1206;
-    font-size: 18px; display: flex; align-items: center; justify-content: center;
+    display: flex; align-items: center; justify-content: center;
     transition: transform .1s;
   }
   .play-btn:active { transform: scale(0.9); }
-  .play-btn:disabled { background: var(--panel-2); color: var(--text-3); cursor: default; }
 
   /* 파형 */
   .wave { display: flex; align-items: flex-end; gap: 2px; height: 34px; margin-top: 12px; }
@@ -112,25 +111,39 @@
   .err { font-size: 12px; color: #FF8A7A; margin-top: 10px; display: none; }
   .err.show { display: block; }
 
-  .tester {
-    background: var(--panel); border: 1px dashed var(--line);
+  /* 점수 매기기 (1~5, 중복 불가) */
+  .score { display: flex; align-items: center; gap: 6px; margin-top: 12px; }
+  .score .lbl { font-size: 11px; color: var(--text-3); flex-shrink: 0; margin-right: 2px; }
+  .sc {
+    flex: 1; height: 34px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--bg);
+    color: var(--text-2); font-family: inherit; font-size: 14px; font-weight: 700;
+    cursor: pointer; transition: background .12s, color .12s, opacity .12s, transform .1s;
+  }
+  .sc:active { transform: scale(0.92); }
+  .sc.taken { opacity: .3; }                              /* 다른 곡이 가져간 점수 */
+  .sc.sel { background: var(--spot); color: #1A1206; border-color: var(--spot); opacity: 1; }
+
+  /* 내 순위 결과 */
+  .result {
+    background: var(--panel); border: 1px solid var(--line);
     border-radius: 14px; padding: 14px; margin-top: 4px;
   }
-  .tester h3 { font-size: 13px; font-weight: 700; color: var(--text-2); margin-bottom: 4px; }
-  .tester p { font-size: 11.5px; color: var(--text-3); line-height: 1.5; margin-bottom: 10px; }
-  .tester input {
-    width: 100%; font-family: inherit; font-size: 13px;
-    background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
-    padding: 10px 12px; color: var(--text); outline: none; margin-bottom: 8px;
+  .result h3 { font-size: 13px; font-weight: 800; margin-bottom: 4px; }
+  .rank-empty { font-size: 12px; color: var(--text-3); line-height: 1.5; margin-top: 6px; }
+  .rank-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 0; border-top: 1px solid var(--line); font-size: 13.5px;
   }
-  .tester input:focus { border-color: var(--violet); }
-  .row2 { display: flex; gap: 8px; }
-  .row2 input { flex: 1; }
-  .tester button {
-    width: 100%; font-family: inherit; font-size: 13.5px; font-weight: 800;
-    background: var(--violet); color: #16101F; border: none;
-    border-radius: 8px; padding: 11px; cursor: pointer; margin-top: 2px;
+  .rank-badge {
+    width: 24px; height: 24px; border-radius: 7px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 12px;
+    background: var(--violet-deep); color: var(--violet);
   }
+  .rank-row.top .rank-badge { background: var(--spot-deep); color: var(--spot); }
+  .rank-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rank-pt { color: var(--spot); font-weight: 800; font-family: ui-monospace, monospace; flex-shrink: 0; }
 
   .debug-bar {
     position: sticky; bottom: 0;
@@ -155,8 +168,8 @@
   <div class="yt-cage" id="ytCage"><div id="ytplayer"></div></div>
 
   <header>
-    <div class="h-title">🎧 숨긴 유튜브 재생 테스트</div>
-    <div class="h-sub">재생 버튼 → 하이라이트 구간만 자동 재생 → 자동 정지.<br>유튜브 UI·추천영상 안 보임. 폰 돌려보고 스크롤해도 안 삐져나오는지 확인!</div>
+    <div class="h-title">🎸 우리 밴드 다음 곡 정하기</div>
+    <div class="h-sub">5곡 하이라이트 들어보고 <b>1~5점</b>을 매겨줘.<br>점수는 곡마다 <b>중복 없이</b> 한 번씩만 (5점 = 제일 하고 싶은 곡).</div>
   </header>
 
   <main id="list"></main>
@@ -169,13 +182,18 @@
 
 <script src="https://www.youtube.com/iframe_api"></script>
 <script>
-// ── 테스트용 곡 (임베드 잘 되는 영상 위주) ──
-// 유튜브 공식 문서 예제 영상 = 임베드 보장됨 (재생 확인용)
+// ── 밴드 후보 곡 (유튜브 링크에서 제목·아티스트 가져옴) ──
 const songs = [
-  { id:'s1', title:'테스트 A (임베드 보장 영상)', sub:'하이라이트 0:15–0:40', vid:'M7lc1UVf-VE', start:15, end:40, emoji:'🎸', color:'#2A2440' },
-  { id:'s2', title:'테스트 B (임베드 보장 영상)', sub:'하이라이트 0:30–0:55', vid:'M7lc1UVf-VE', start:30, end:55, emoji:'🌀', color:'#1D3230' },
-  { id:'s3', title:'테스트 C (Big Buck Bunny)', sub:'하이라이트 0:20–0:45', vid:'aqz-KE-bpKQ', start:20, end:45, emoji:'🌊', color:'#17293D' },
+  { id:'s1', title:'115만 킬로의 필름', sub:'Official髭男dism', vid:'cFANezsSHFo', start:65, end:95, emoji:'🎬', color:'#2A2440' },
+  { id:'s2', title:'고민중독',          sub:'QWER',             vid:'hFTs6HbtxbE', start:47, end:72, emoji:'🐞', color:'#183322' },
+  { id:'s3', title:'Highlight',        sub:'TOUCHED',          vid:'L5Ba-pp3Qw0', start:45, end:72, emoji:'✨', color:'#33280F' },
+  { id:'s4', title:'Syringe',          sub:'Redoor',           vid:'uVs0tqOck7k', start:50, end:78, emoji:'💉', color:'#17293D' },
+  { id:'s5', title:'Blue Spring',      sub:'THORNAPPLE',       vid:'8i-B1ieI_kY', start:60, end:90, emoji:'🌱', color:'#142B26' },
 ];
+
+// 곡별 점수: id -> 1~5 (중복 불가) 또는 null
+const scores = {};
+songs.forEach(s => scores[s.id] = null);
 
 let player, ready=false, active=null, timer=null;
 
@@ -257,6 +275,52 @@ function playSong(s){
 
 function fmt(s){ s=Math.floor(s); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); }
 
+// ── 점수 매기기 (1~5, 곡끼리 중복 불가) ──
+function setScore(id, v){
+  if(scores[id] === v){
+    scores[id] = null;                 // 같은 점수 다시 누르면 해제
+  } else {
+    // 이미 다른 곡이 그 점수를 갖고 있으면 뺏어옴 (항상 중복 없음 보장)
+    for(const k in scores){ if(scores[k] === v) scores[k] = null; }
+    scores[id] = v;
+  }
+  renderScores();
+  renderResult();
+}
+
+function renderScores(){
+  songs.forEach(s=>{
+    const row = document.querySelector(`[data-score-for="${s.id}"]`);
+    if(!row) return;
+    row.querySelectorAll('.sc').forEach(b=>{
+      const v = Number(b.dataset.v);
+      const mine = scores[s.id] === v;
+      const takenElsewhere = Object.keys(scores).some(k => k!==s.id && scores[k]===v);
+      b.classList.toggle('sel', mine);
+      b.classList.toggle('taken', !mine && takenElsewhere);
+    });
+  });
+}
+
+function renderResult(){
+  const scored = songs
+    .filter(s => scores[s.id] != null)
+    .sort((a,b) => scores[b.id] - scores[a.id]);   // 높은 점수 = 1위
+  const el = document.getElementById('result');
+  if(scored.length === 0){
+    el.innerHTML = `<h3>🏆 내 순위</h3>
+      <div class="rank-empty">아직 점수를 안 매겼어요.<br>곡마다 1~5점을 눌러보면 여기 순위가 정리돼요.</div>`;
+    return;
+  }
+  el.innerHTML = `<h3>🏆 내 순위 <span style="color:var(--text-3);font-weight:500">(${scored.length}/5)</span></h3>` +
+    scored.map((s,i)=> `
+      <div class="rank-row${i===0?' top':''}">
+        <span class="rank-badge">${i+1}</span>
+        <span class="rank-name">${s.title} <span style="color:var(--text-3)">· ${s.sub}</span></span>
+        <span class="rank-pt">${scores[s.id]}점</span>
+      </div>`).join('');
+}
+
 // 회전/리사이즈 안전장치: 위치는 부모가 잡아줘서 안 어긋남.
 // 혹시 재생이 끊기면 현재 위치로 다시 이어붙임.
 let lastT=0;
@@ -275,28 +339,7 @@ function toggleReveal(){
   cage.classList.toggle('reveal'); btn.classList.toggle('on');
 }
 
-// 직접 링크 테스트
-function testCustom(){
-  const url=document.getElementById('inpUrl').value.trim();
-  const st=parseTime(document.getElementById('inpStart').value);
-  const en=parseTime(document.getElementById('inpEnd').value);
-  const vid=extractId(url);
-  if(!vid){ alert('유튜브 링크를 다시 확인해줘'); return; }
-  const start = st||0;
-  const end = en || (start+30);
-  if(end <= start){ alert('끝 시각이 시작보다 뒤여야 해'); return; }
-  const s = { id:'custom', title:'내가 넣은 곡', sub:vid, vid, start, end, emoji:'🎵', color:'#2E2417' };
-  // 커스텀 곡도 자기 카드를 가져야 playSong이 파형·시간·경고를 그림
-  document.getElementById('customResult').innerHTML = cardHTML(s);
-  playSong(s);
-}
-function parseTime(v){ if(!v) return 0; if(v.includes(':')){ const[m,s]=v.split(':').map(Number); return m*60+(s||0);} return Number(v)||0; }
-function extractId(url){
-  const m = url.match(/(?:youtu\.be\/|v=|\/embed\/|\/shorts\/)([A-Za-z0-9_-]{11})/);
-  return m ? m[1] : (url.length===11 ? url : null);
-}
-
-// 카드 하나의 HTML (프리셋·커스텀 공용)
+// ── 렌더 ──
 function cardHTML(s){ return `
     <div class="card" data-card="${s.id}">
       <div class="card-top">
@@ -310,24 +353,19 @@ function cardHTML(s){ return `
       </div>
       <div class="wave">${Array.from({length:28},(_,i)=>`<span style="height:${20+Math.abs(Math.sin(i*1.6+s.start))*75}%"></span>`).join('')}</div>
       <div class="time"><span class="cur">0:00</span><span>${fmt(s.end)}</span></div>
-      <div class="err">⚠ 이 영상은 임베드가 막혀있어요 (밴드 곡에서도 가끔 생김 — 다른 링크로!)</div>
+      <div class="score" data-score-for="${s.id}">
+        <span class="lbl">점수</span>
+        ${[1,2,3,4,5].map(v=>`<button class="sc" data-v="${v}" onclick="setScore('${s.id}',${v})">${v}</button>`).join('')}
+      </div>
+      <div class="err">⚠ 이 영상은 임베드가 막혀있어요 (다른 링크로 바꿔야 해요)</div>
     </div>`; }
 
-// 렌더
 function render(){
-  const el=document.getElementById('list');
-  el.innerHTML = songs.map(cardHTML).join('') + `
-    <div class="tester">
-      <h3>🔗 네 밴드 곡으로 직접 테스트</h3>
-      <p>유튜브 링크 붙여넣고 하이라이트 구간 입력 → 진짜 되는지 확인해봐</p>
-      <input id="inpUrl" placeholder="https://youtu.be/..." />
-      <div class="row2">
-        <input id="inpStart" placeholder="시작 (예: 1:23)" />
-        <input id="inpEnd" placeholder="끝 (예: 1:58)" />
-      </div>
-      <button onclick="testCustom()">이 구간만 재생</button>
-      <div id="customResult"></div>
-    </div>`;
+  document.getElementById('list').innerHTML =
+    songs.map(cardHTML).join('') +
+    `<div class="result" id="result"></div>`;
+  renderScores();
+  renderResult();
 }
 render();
 </script>
