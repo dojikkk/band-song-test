@@ -1,0 +1,62 @@
+// 진행 중 "방 설정 수정" — 확정 전까지 수정 가능 (단, 이미 시작된 약속은 잠김)
+import { useState } from 'react';
+import { Button, Sheet, useToast } from '../../components/ui';
+import { errorText, updateSettings } from '../../lib/api';
+import {
+  BasicFields,
+  RuleFields,
+  ScheduleFields,
+  VoteFields,
+  diffSettings,
+  pickSettings,
+} from '../settings/SettingsFields';
+
+export default function SettingsSheet({ state, token, notify, onClose }) {
+  const { band, members } = state;
+  const toast = useToast();
+  const [draft, setDraft] = useState(() => pickSettings(band));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const set = (patch) => setDraft((d) => ({ ...d, ...patch }));
+  const patch = diffSettings(pickSettings(band), draft);
+  const changed = Object.keys(patch).length > 0;
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await updateSettings(token, patch);
+      toast('설정을 저장했어요');
+      await notify();
+      onClose();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Sheet
+      title="방 설정 수정"
+      onClose={onClose}
+      footer={
+        <>
+          {error && <p className="form-error" role="alert">{error}</p>}
+          <Button busy={busy} onClick={save} disabled={!changed || !draft.name?.trim()}>
+            저장
+          </Button>
+        </>
+      }
+    >
+      <h3 className="section-title">일정</h3>
+      <ScheduleFields draft={draft} set={set} status={band.status} />
+      <h3 className="section-title">기본</h3>
+      <BasicFields draft={draft} set={set} status={band.status} memberCount={members.length} />
+      <h3 className="section-title">투표</h3>
+      <VoteFields draft={draft} set={set} status={band.status} />
+      <h3 className="section-title">참여 규칙</h3>
+      <RuleFields draft={draft} set={set} status={band.status} />
+    </Sheet>
+  );
+}

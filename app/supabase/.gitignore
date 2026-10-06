@@ -1,0 +1,4 @@
+# Supabase CLI가 만드는 임시 파일들
+.branches
+.temp
+.env
