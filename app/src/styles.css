@@ -600,3 +600,4 @@ details.past .rehearsal-list li { opacity: .65; }
 .best li .row-link { border-bottom: 1px solid var(--line); padding: 10px 2px; }
 .best-count { font-weight: 800; color: var(--green); }
 .inline-confirm { display: inline-flex; align-items: center; gap: 8px; color: var(--text-3); }
+.error-detail { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--danger); background: var(--danger-deep); border-radius: var(--radius-sm); padding: 10px 12px; white-space: pre-wrap; word-break: break-all; }

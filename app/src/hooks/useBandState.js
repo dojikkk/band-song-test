@@ -26,7 +26,7 @@ export function useBandState(token, bandId, onExpired) {
     if (inflight.current) return inflight.current;
     inflight.current = (async () => {
       try {
-        const s = await getState(token);
+        const s = normalizeState(await getState(token));
         setState(s);
         setLoadError(null);
         return s;
@@ -87,4 +87,32 @@ export function useBandState(token, bandId, onExpired) {
   }, [refresh]);
 
   return { state, loadError, refresh, notify };
+}
+
+// 서버(DB)가 예전 버전이면 새 화면이 기대하는 칸이 없을 수 있음 → 기본값을 채우고 표시해 둠.
+// (코드는 먼저 바뀌었는데 Supabase 마이그레이션이 아직 안 들어간 순간 등)
+export function normalizeState(s) {
+  if (!s || s.pending) return s;
+  const dbOutdated = !Array.isArray(s.groups);
+  return {
+    ...s,
+    dbOutdated,
+    groups: s.groups ?? [],
+    slots: s.slots ?? [],
+    rehearsals: s.rehearsals ?? [],
+    schedule: s.schedule ?? null,
+    my_votes: s.my_votes ?? [],
+    songs: (s.songs ?? []).map((x) => ({ links: {}, ...x })),
+    members: (s.members ?? []).map((m) => ({ status: 'active', parts: [], voted_groups: 0, ...m })),
+    me: { status: 'active', parts: [], ...s.me },
+    band: {
+      vote_method: 'majority',
+      use_groups: false,
+      multi_group: false,
+      join_approval: false,
+      require_listen: false,
+      lineup: [],
+      ...s.band,
+    },
+  };
 }

@@ -96,6 +96,29 @@ function RoomInner({ room, onExit, onExpired }) {
     );
   }
 
+  // 서버 DB가 아직 v1 — 화면은 v2라서 못 그림. 마이그레이션이 들어오면 자동으로 풀림(주기적 새로고침)
+  if (state.dbOutdated) {
+    return (
+      <div className="screen">
+        <div className="empty">
+          <h1 className="h-md">서버가 아직 예전 버전이에요</h1>
+          <p className="muted">
+            앱 화면은 새 버전인데 Supabase DB는 아직 업데이트 전이에요. GitHub에 push하면 Supabase가 1~2분 안에 DB를
+            업데이트하고, 이 화면은 자동으로 방 화면으로 바뀌어요.
+          </p>
+          <div className="row-btns left">
+            <button className="primary-btn" onClick={refresh}>
+              다시 확인
+            </button>
+            <button className="ghost-btn" onClick={() => onExit()}>
+              처음 화면
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // 승인 대기 중
   if (state.pending) {
     return <PendingRoom state={state} onLogout={doLogout} onOtherRooms={() => onExit()} />;
