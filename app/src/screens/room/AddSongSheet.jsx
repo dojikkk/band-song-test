@@ -2,7 +2,8 @@
 // 미리보기 플레이어로 직접 들으면서 "지금 위치"를 눌러 구간을 잡음.
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Button, Sheet, TextField } from '../../components/ui';
-import { errorText, saveSong } from '../../lib/api';
+import { errorText, saveSong, setSongLinks } from '../../lib/api';
+import { lookupExactLinks } from '../../lib/links';
 import {
   fmtTime,
   guessTitleArtist,
@@ -15,7 +16,7 @@ import {
 
 const BLOCKING = [2, 100, 101, 150]; // 이 오류면 저장 막음 (아무도 못 들음)
 
-export default function AddSongSheet({ token, band, editing, onClose, onSaved }) {
+export default function AddSongSheet({ token, band, editing, onClose, onSaved, notify }) {
   const [link, setLink] = useState(editing ? watchUrl(editing.youtube_id) : '');
   const parsed = useMemo(() => parseYouTube(link), [link]);
   const videoId = parsed?.id || null;
@@ -82,7 +83,7 @@ export default function AddSongSheet({ token, band, editing, onClose, onSaved })
     setBusy(true);
     setError(null);
     try {
-      await saveSong(token, {
+      const res = await saveSong(token, {
         id: editing?.id,
         youtube_id: videoId,
         title,
@@ -92,6 +93,12 @@ export default function AddSongSheet({ token, band, editing, onClose, onSaved })
         comment: band.allow_comments ? comment : null,
       });
       onSaved(editing ? '곡을 바꿨어요' : '곡을 올렸어요');
+      // 다른 앱(Spotify·Apple Music) 정확한 링크를 뒤에서 찾아 저장 — 실패해도 검색 링크로 대체됨
+      if (!editing || editing.youtube_id !== videoId) {
+        lookupExactLinks(videoId).then((links) => {
+          if (links) setSongLinks(token, res.song_id, links).then(() => notify?.(), () => {});
+        });
+      }
     } catch (err) {
       setError(errorText(err));
     } finally {

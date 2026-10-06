@@ -1,7 +1,13 @@
-# 셋리스트 — 밴드 곡 선정 앱 v1 (다수결)
+# 셋리스트 — 밴드 곡 선정 앱 v2
 
-방장이 방을 만들고 → 멤버가 유튜브 링크로 곡을 올리고 → 하이라이트를 같이 듣고 → 투표해서 공연 곡을 정하는 모바일 웹앱.
-설계 기준은 `밴드 곡 선정 앱 · 화면 설계(IA)` 문서. 이 폴더가 그 v1 구현이야.
+방장이 방을 만들고 → 멤버가 유튜브 링크로 곡을 올리고 → 하이라이트를 같이 듣고 → 투표해서 공연 곡을 정하고
+→ 파트를 나누고 → 합주 일정까지 잡는 모바일 웹앱.
+설계 기준은 `밴드 곡 선정 앱 · 화면 설계(IA)` 문서.
+
+| | 들어 있는 기능 |
+|---|---|
+| v1 | 참여코드+이름+PIN 입장, 방장 설정 4단계, 곡 수합(유튜브+하이라이트+코멘트), 다수결 투표, 결과·선정, PIN 초기화 |
+| v2 | **점수제(보르다)**, **그룹(파트) 분류**, **입장 승인·내보내기·참여코드 재발급**, **파트 배분**, **합주 일정 조율**, **Spotify·Apple Music·멜론 링크**, 청취 후 투표 옵션 |
 
 ```
 React (Vite)  ──RPC 호출──▶  Supabase (Postgres + DB 함수)      배포: Vercel
@@ -29,7 +35,9 @@ React (Vite)  ──RPC 호출──▶  Supabase (Postgres + DB 함수)      �
 
 ## 1. Supabase 준비
 
-DB 내용은 전부 `supabase/migrations/20261006120000_init.sql` 한 파일에 있어 (테이블 5개 + 함수 14개).
+DB 내용은 `supabase/migrations/` 안의 파일들이야. 번호 순서대로 적용돼.
+- `20261006120000_init.sql` — v1: 테이블 5개 + 함수 14개
+- `20261007000000_v2.sql` — v2: 그룹·점수·승인·파트·합주 (기존 데이터는 그대로 두고 덧붙임)
 
 **연동 켜기 (한 번만)** — Supabase 대시보드 → 프로젝트 → **Project Settings → Integrations → GitHub**
 1. **Authorize GitHub** → `dojikkk/band-song-test` 선택
@@ -79,24 +87,32 @@ app/
 ├─ supabase/
 │  ├─ config.toml             ← Supabase CLI·GitHub 연동이 읽는 설정 (거의 안 만짐)
 │  └─ migrations/             ← DB 변경 이력. 파일 하나 = 변경 한 번
-│     └─ 20261006120000_init.sql   ← 테이블 + 잠금(RLS) + DB 함수 전부
+│     ├─ 20261006120000_init.sql   ← v1: 테이블 + 잠금(RLS) + DB 함수
+│     └─ 20261007000000_v2.sql     ← v2: 그룹·점수제·승인·파트·합주·링크
 ├─ src/
 │  ├─ lib/
 │  │  ├─ api.js               ← DB 함수 호출을 한곳에 모음 + 에러코드 → 한국어 문장
 │  │  ├─ supabase.js          ← Supabase 연결
 │  │  ├─ rooms.js             ← "이 기기에서 들어간 방" 기억 (localStorage)
 │  │  ├─ youtube.js           ← 링크 해석, IFrame API 로딩, 시간 표기
-│  │  └─ time.js              ← 마감일 표시
+│  │  ├─ links.js             ← Spotify·Apple Music·멜론 링크 (정확한 링크 → 없으면 검색)
+│  │  ├─ listened.js          ← "청취 후 투표"용 들은 곡 기억
+│  │  ├─ selectors.js         ← 상태에서 그룹·내 표 등 꺼내는 도우미
+│  │  └─ time.js              ← 마감일·합주 날짜/시간 표시
 │  ├─ hooks/useBandState.js   ← 방 상태 가져오기 + 실시간 갱신
 │  ├─ player/                 ← 미니 플레이어 (화면에 딱 하나)
 │  ├─ screens/
 │  │  ├─ Entry / JoinFlow / CreateBand   ← [A] 진입
 │  │  ├─ SetupWizard + settings/         ← [B] 방장 설정 4단계
-│  │  ├─ Room.jsx                        ← [C] 공용 화면 뼈대 (status에 따라 변신)
+│  │  ├─ Room.jsx                        ← [C] 공용 화면 뼈대 (status에 따라 변신 + 탭)
+│  │  ├─ PendingRoom.jsx                 ← 입장 승인 대기 화면
 │  │  └─ room/
 │  │     ├─ Collecting / AddSongSheet    ← [C-1] 곡 수합
-│  │     ├─ Voting                       ← [C-2] 투표
-│  │     ├─ Results                      ← [C-3] 결과·확정
+│  │     ├─ GroupSheet                   ← 그룹 나누기 (방장)
+│  │     ├─ Voting                       ← [C-2] 투표 (다수결 / 순위 매기기, 그룹별)
+│  │     ├─ Results                      ← [C-3] 결과·확정 (그룹별)
+│  │     ├─ Parts                        ← 파트 탭: 내 파트, 손들기, 배정
+│  │     ├─ Schedule                     ← 합주 일정 탭: 가능 시간 표, 합주 확정
 │  │     ├─ LeaderPanel / SettingsSheet  ← [D] 방장 오버레이
 │  │     └─ MeSheet                      ← 내 메뉴 (PIN 바꾸기, 로그아웃)
 │  └─ components/             ← 카드, 버튼, 시트 같은 공용 부품
@@ -155,20 +171,38 @@ DB는 "지금 모습"이 아니라 **"바뀐 순서"를 파일로** 남겨. 그�
 | 미정 사항 | v1에서 정한 것 |
 |---|---|
 | 하이라이트 필수/선택 | **선택.** 비우면 처음부터 재생. 링크에 `?t=47`이 있으면 0:47–1:17로 자동 채움 |
-| 청취 후 투표 | **안 넣음.** 대신 미니 플레이어에 "다음 곡" 버튼으로 연속 듣기 |
+| 청취 후 투표 | v1엔 안 넣음 → **v2에서 옵션으로 추가** (아래 표) |
 | 결과 화면에 뭐가 보이나 | 방장이 고른 **최종 선정 곡** + **전체 득표 순위**. 공개 투표면 곡마다 찍은 사람 이름도 |
 | 투표 결과 중간 수정 범위 | **던진 표 바꾸기만** (설정에서 끌 수 있음). 단계 되돌리기는 없음 |
 | 방장 이탈 | 방장은 방을 못 나감. 로그아웃만 가능. 권한 위임 없음 |
 | 인당 투표 수 | 다수결 · 인당 N곡까지 (1~N개 자유롭게, 0개는 안 됨) |
 
+**v2에서 새로 정한 것** (설계 문서에 비어 있던 부분)
+
+| 항목 | 정한 것 |
+|---|---|
+| 그룹 나누는 화면 | 방장 메뉴/곡 수합 화면의 **그룹 나누기** → 그룹 만들고, 곡마다 그룹 칩을 눌러 넣기. 곡 수합 중 아무 때나, 투표 시작 전까지 |
+| 그룹 없는 방 | 투표 시작 순간 '전체' 그룹 하나가 자동으로 생김 → 투표·결과는 늘 "그룹별"로 같은 방식 |
+| 미분류 곡 | 그룹 쓰는 방은 모든 곡이 그룹에 들어가야 투표 시작 가능 (점수제 공정성 때문에 DB가 막음). 빈 그룹은 자동 삭제 |
+| 다수결 + 그룹 | 그룹마다 N곡까지 고르기 |
+| 점수제 화면 | 좋은 순서대로 눌러서 순위 매기기 (누르면 1위, 2위…). 다 매겨야 "제출" 버튼이 켜짐 |
+| 결과 | 그룹마다 따로 순위. 그룹끼리는 비교 안 함. 공개 투표면 "민수 4, 준호 3"처럼 누가 몇 점 줬는지 |
+| 입장 승인 | 승인 방식이면 들어온 사람은 '대기' → 방장 메뉴 맨 위에 승인/거절. 대기자는 정원에 포함 |
+| 내보내기 | 방장만, 방장은 못 내보냄. **투표 중엔 곡을 올린 사람은 못 내보냄** (남의 순위표가 깨져서) |
+| 참여코드 재발급 | 예전 코드·링크는 막히고, 이미 들어온 사람은 그대로 |
+| 파트 배분 | 방장이 정한 **기본 편성**(보컬·기타1·기타2·베이스·드럼·키보드)으로 선정곡마다 자리가 자동 생성 → 멤버가 "할래요" 손들기 → 방장이 배정. 곡마다 자리 추가/삭제 가능 |
+| 합주 일정 | when2meet 방식: 방장이 날짜(최대 3주)·시간대를 열면 각자 1시간 칸을 칠함 → "모두 보기"에서 겹치는 시간 → 방장이 합주 확정(장소·메모) → 구글 캘린더 추가 링크 |
+| 다른 앱 링크 | 곡 올릴 때 Odesli(song.link)로 Spotify·Apple Music 정확한 링크를 찾아 저장. 못 찾으면 검색 링크로 대체 (멜론은 항상 검색) |
+| 청취 후 투표 | 옵션. 하이라이트 60% 이상 들어야 고를 수 있음. **각 기기 기준**이라 강제력보단 "듣고 투표하자" 장치 |
+
 추가로 정한 것:
-- **설정 잠금** — 곡 수합이 시작되면 "올린 사람 숨기기"는 고정, 투표가 시작되면 "인당 표 수 / 익명 투표 / 표 수정 허용"은 고정. 진행 중에 약속을 바꾸면 안 되니까. (DB 함수가 강제)
+- **설정 잠금** — 곡 수합이 시작되면 "올린 사람 숨기기"는 고정, 투표가 시작되면 "투표 방식 / 그룹 사용 / 인당 표 수 / 익명 투표 / 표 수정 허용"은 고정. 확정 후엔 이름·인원·입장 방식·파트 편성만 수정 가능. 진행 중에 약속을 바꾸면 안 되니까. (DB 함수가 강제)
 - **방장 결과 비공개** — 투표 중엔 방장 메뉴에도 "누가 투표했는지(참여 여부)"만 보여. 뭘 찍었는지/득표수는 마감 때 모두 동시에.
 - **카톡 인앱 브라우저** — 감지되면 "브라우저로 열기" 안내를 띄움 (광고·로그인 문제 때문).
 
 ## 7. 알아 둘 한계
 
-- **Supabase 무료 플랜은 7일 동안 요청이 없으면 일시정지돼.** 그래서 `.github/workflows/supabase-keepalive.yml`이 월·목마다 한 번씩 깨워. 저장소 Secrets에 `SUPABASE_URL`, `SUPABASE_ANON_KEY`가 있어야 동작해. 단, GitHub는 저장소에 60일간 커밋이 없으면 예약 작업을 멈추니까 그럴 땐 Actions 탭에서 다시 켜기.
+- **Supabase 무료 플랜은 7일 동안 요청이 없으면 일시정지돼.** 맨 아래 [부록]의 GitHub Actions를 추가하면 월·목마다 한 번씩 깨워 줘. (안 넣었으면 곡 선정 전에 대시보드에서 Restore)
 - **유튜브 광고는 못 막아.** 보이는 플레이어라서 직접 "건너뛰기"를 누를 수 있고, 광고가 끝나면 하이라이트 시작점으로 이어져.
 - **퍼가기 차단 영상**(유명 공식 뮤비에 많음)은 미리보기에서 오류가 뜨고 저장이 막혀. 라이브 클립·음원 영상 링크로 바꾸게 안내함.
 - **아이폰은 첫 재생이 자동으로 안 될 수 있어.** 그럴 땐 "영상 화면을 한 번 눌러 주세요" 안내가 뜸 (보이는 플레이어라 가능한 해결).
@@ -194,12 +228,51 @@ delete from public.bands where invite_code = 'ABC123';   -- 멤버·곡·투표�
 
 **DB를 통째로 비우고 처음부터 다시** (데이터 전부 사라짐, 신중히)
 ```sql
-drop table if exists public.votes, public.songs, public.sessions, public.members, public.bands cascade;
+drop table if exists public.rehearsals, public.availability_responses, public.availability, public.schedule_polls,
+  public.slot_requests, public.song_slots, public.song_group_items, public.song_groups,
+  public.votes, public.songs, public.sessions, public.members, public.bands cascade;
 drop schema if exists private cascade;
-delete from supabase_migrations.schema_migrations where version = '20261006120000';
--- → 그다음 init 파일을 SQL Editor에서 다시 Run (또는 아무 커밋이나 push해서 연동이 다시 적용하게)
+delete from supabase_migrations.schema_migrations;
+-- → 그다음 migrations 파일들을 번호 순서대로 SQL Editor에서 Run (또는 아무 커밋이나 push해서 연동이 다시 적용하게)
 ```
 
-## 9. v2에서 얹을 것 (설계 문서 6장)
-점수제(보르다) · 그룹(파트) 분류 · 초대 승인 방식 · 추방 · 파트 배분/합주 일정 · 스포티파이/애플뮤직 링크.
-설정 화면에 자리는 이미 "다음 버전에서 열려요"로 잡아 뒀어.
+## 9. 아직 안 넣은 것 (다음 후보)
+- **밴드가 직접 녹음한 파일 올리기** — Supabase Storage + 업로드 권한을 확인하는 서버 함수(Edge Function)가 필요. 무료 저장 공간 1GB라 용량 정책도 같이 정해야 함
+- **카톡 알림** (마감 임박, 승인 요청 등) — 카카오 비즈 채널 승인이 필요해서 개인 프로젝트로는 무거움
+- **단계 되돌리기** — 지금은 일부러 막아 둠 (넘기기 전 확인 단계로 대신)
+
+---
+
+## 부록: Supabase 깨우기 GitHub Actions (선택)
+
+보안상 `.github/workflows/` 파일은 GitHub 웹에서 직접 만드는 걸 추천해.
+
+1. GitHub 저장소 → **Settings → Secrets and variables → Actions → New repository secret** 두 개
+   - `SUPABASE_URL` = `https://xxxx.supabase.co`
+   - `SUPABASE_ANON_KEY` = publishable 키 (어차피 웹앱에 공개되는 키)
+2. 저장소 → **Add file → Create new file** → 이름 `.github/workflows/supabase-keepalive.yml` → 아래 붙여넣고 Commit
+3. **Actions** 탭 → "Supabase 깨우기" → **Run workflow** 로 한 번 돌려 보기 (초록 체크면 성공)
+
+```yaml
+name: Supabase 깨우기
+on:
+  schedule:
+    - cron: '17 0 * * 1,4' # 매주 월·목 오전 9시 17분 (한국 시간)
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: DB 함수 한 번 호출하기
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          status=$(curl -sS -o response.json -w '%{http_code}' -X POST "$SUPABASE_URL/rest/v1/rpc/peek_band" \
+            -H "apikey: $SUPABASE_KEY" -H "Content-Type: application/json" \
+            -d '{"p_invite_code":"KEEPALIVE"}')
+          echo "HTTP $status"; cat response.json; echo
+          test "$status" = "200"
+```
+GitHub는 저장소에 60일 동안 커밋이 없으면 예약 작업을 멈춰. 그럴 땐 Actions 탭에서 다시 켜면 돼.

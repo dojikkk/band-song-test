@@ -1,13 +1,27 @@
 // [D] 방장 전용 오버레이 — 진행 중 어디서나 열림
-//  D-2 진행 제어: 단계 수동 마감 (+ 참여 현황, 독촉 메시지)
-//  D-1 멤버 관리: PIN 초기화
+//  D-2 진행 제어: 단계 수동 마감 (+ 참여 현황, 독촉 메시지, 그룹 나누기)
+//  D-1 멤버 관리: 입장 승인/거절, PIN 초기화, 내보내기, 참여코드 새로 만들기
 //  ⚠ 방장도 참여자 → 마감 전 투표 결과는 방장도 못 봄 (DB가 안 내려줌)
 import { useState } from 'react';
 import Icon from '../../components/Icon';
 import StatusSteps from '../../components/StatusSteps';
 import { Button, Sheet, copyText, inviteLink, useToast } from '../../components/ui';
-import { advanceStatus, errorText, resetPin } from '../../lib/api';
+import {
+  advanceStatus,
+  approveMember,
+  errorText,
+  regenerateInviteCode,
+  removeMember,
+  resetPin,
+} from '../../lib/api';
+import { groupsBySong } from '../../lib/selectors';
 import { dday, fmtDeadline } from '../../lib/time';
+
+export function groupStatus(groupCount, songCount, ungrouped) {
+  if (groupCount === 0) return '아직 그룹이 없어요 · 눌러서 만들기';
+  if (songCount === 0) return `그룹 ${groupCount}개 · 곡이 올라오면 나눠요`;
+  return `그룹 ${groupCount}개 · ${ungrouped > 0 ? `미분류 ${ungrouped}곡` : '모든 곡 분류 완료'}`;
+}
 
 const NEXT = {
   setup: {
@@ -16,7 +30,7 @@ const NEXT = {
   },
   collecting: {
     label: '곡 수합 마감하고 투표 시작',
-    warn: '투표가 시작되면 곡을 더 올리거나 바꿀 수 없어요. 되돌릴 수 없어요.',
+    warn: '투표가 시작되면 곡을 더 올리거나 바꿀 수 없고, 그룹도 고정돼요. 되돌릴 수 없어요.',
   },
   voting: {
     label: '투표 마감하고 결과 공개',
@@ -24,18 +38,24 @@ const NEXT = {
   },
 };
 
-export default function LeaderPanel({ state, token, notify, onClose, onEditSettings }) {
-  const { band, members, me } = state;
+export default function LeaderPanel({ state, token, notify, onClose, onEditSettings, onOpenGroups }) {
+  const { band, me } = state;
   const toast = useToast();
   const [confirming, setConfirming] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
-  const [resetFor, setResetFor] = useState(null); // member id (확인 중)
+  const [openMember, setOpenMember] = useState(null); // 메뉴 펼친 멤버 id
+  const [confirmAction, setConfirmAction] = useState(null); // { id, kind: 'reset'|'kick' }
   const [tempPin, setTempPin] = useState(null); // { name, pin }
+  const [confirmCode, setConfirmCode] = useState(false);
 
+  const members = state.members.filter((m) => m.status !== 'pending');
+  const waiting = state.members.filter((m) => m.status === 'pending');
   const next = NEXT[band.status];
+  const bySong = band.use_groups ? groupsBySong(state) : null;
+  const ungrouped = bySong ? state.songs.filter((s) => !bySong.has(s.id)).length : 0;
 
-  // 참여 현황: 곡 수합이면 "곡 낸 사람", 투표면 "투표한 사람"
+  // 참여 현황: 곡 수합이면 "곡 낸 사람", 투표면 "모든 그룹 투표 끝낸 사람"
   const pending =
     band.status === 'collecting'
       ? members.filter((m) => m.song_count === 0)
@@ -43,15 +63,37 @@ export default function LeaderPanel({ state, token, notify, onClose, onEditSetti
         ? members.filter((m) => !m.voted)
         : [];
   const doneCount = members.length - pending.length;
-  const progressLabel = band.status === 'collecting' ? '곡을 올린 사람' : '투표한 사람';
+  const progressLabel = band.status === 'collecting' ? '곡을 올린 사람' : '투표 끝낸 사람';
   const deadline = band.status === 'collecting' ? band.collect_deadline : band.vote_deadline;
 
+  const act = async (key, fn, okMsg) => {
+    setBusy(key);
+    setError(null);
+    try {
+      const r = await fn();
+      if (okMsg) toast(typeof okMsg === 'function' ? okMsg(r) : okMsg);
+      await notify();
+      return r;
+    } catch (e) {
+      toast(errorText(e), 'error');
+      return null;
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const advance = async () => {
-    setBusy(true);
+    setBusy('advance');
     setError(null);
     try {
       const r = await advanceStatus(token, band.status);
-      toast(r.status === 'voting' ? '투표를 시작했어요' : r.status === 'done' ? '투표를 마감했어요. 결과가 공개됐어요' : '곡 수합을 시작했어요');
+      toast(
+        r.status === 'voting'
+          ? '투표를 시작했어요'
+          : r.status === 'done'
+            ? '투표를 마감했어요. 결과가 공개됐어요'
+            : '곡 수합을 시작했어요',
+      );
       setConfirming(false);
       await notify();
       onClose();
@@ -59,7 +101,7 @@ export default function LeaderPanel({ state, token, notify, onClose, onEditSetti
       setError(errorText(e));
       if (e.code === 'STALE_STATUS') await notify();
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
@@ -83,26 +125,42 @@ export default function LeaderPanel({ state, token, notify, onClose, onEditSetti
     if (await copyText(text)) toast('초대 메시지를 복사했어요');
   };
 
-  const doReset = async (m) => {
-    setBusy(true);
-    try {
-      const r = await resetPin(token, m.id);
-      setTempPin({ name: m.name, pin: r.temp_pin });
-      setResetFor(null);
-    } catch (e) {
-      toast(errorText(e), 'error');
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <Sheet title="방장 메뉴" onClose={onClose} tone="leader">
+      {waiting.length > 0 && (
+        <section className="lp-section">
+          <h3 className="section-title">입장 대기 {waiting.length}명</h3>
+          <ul className="member-list">
+            {waiting.map((m) => (
+              <li key={m.id}>
+                <span className="m-name">{m.name}</span>
+                <span className="m-confirm">
+                  <Button
+                    className="ghost-btn small"
+                    busy={busy === `rej-${m.id}`}
+                    onClick={() => act(`rej-${m.id}`, () => removeMember(token, m.id), `${m.name} 거절했어요`)}
+                  >
+                    거절
+                  </Button>
+                  <Button
+                    className="primary-btn small"
+                    busy={busy === `ok-${m.id}`}
+                    onClick={() => act(`ok-${m.id}`, () => approveMember(token, m.id), `${m.name} 들어왔어요`)}
+                  >
+                    승인
+                  </Button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section className="lp-section">
         <h3 className="section-title">진행</h3>
         <StatusSteps status={band.status} />
 
-        {band.status === 'collecting' || band.status === 'voting' ? (
+        {(band.status === 'collecting' || band.status === 'voting') && (
           <div className="lp-progress">
             <div className="lp-progress-top">
               <span>
@@ -123,7 +181,19 @@ export default function LeaderPanel({ state, token, notify, onClose, onEditSetti
             )}
             <p className="hint">다 안 해도 넘어갈 수 있어요. 앱은 막지 않으니 필요하면 단톡방에서 독촉해요.</p>
           </div>
-        ) : null}
+        )}
+
+        {band.use_groups && (band.status === 'setup' || band.status === 'collecting') && (
+          <button className="row-link boxed" onClick={onOpenGroups}>
+            <span>
+              <strong>그룹 나누기</strong>
+              <small>
+                {groupStatus(state.groups.length, state.songs.length, ungrouped)}
+              </small>
+            </span>
+            <Icon name="chevron" size={18} />
+          </button>
+        )}
 
         {next ? (
           !confirming ? (
@@ -136,23 +206,24 @@ export default function LeaderPanel({ state, token, notify, onClose, onEditSetti
               {band.status === 'collecting' && state.songs.length === 0 && (
                 <p className="form-error">아직 올라온 곡이 없어요.</p>
               )}
+              {band.status === 'collecting' && ungrouped > 0 && (
+                <p className="form-error">그룹에 안 넣은 곡이 {ungrouped}개 있어요. 먼저 그룹 나누기를 끝내 주세요.</p>
+              )}
               <div className="row-btns">
-                <button className="ghost-btn" onClick={() => setConfirming(false)} disabled={busy}>
+                <button className="ghost-btn" onClick={() => setConfirming(false)} disabled={busy === 'advance'}>
                   취소
                 </button>
-                <Button className="leader-btn" busy={busy} onClick={advance}>
+                <Button className="leader-btn" busy={busy === 'advance'} onClick={advance}>
                   넘어가기
                 </Button>
               </div>
             </div>
           )
         ) : (
-          <p className="muted small">모든 단계가 끝났어요. 결과 화면에서 최종 곡을 선정해요.</p>
+          <p className="muted small">모든 단계가 끝났어요. 결과 화면에서 최종 곡을 선정하고, 파트·합주 탭에서 이어가요.</p>
         )}
         {error && <p className="form-error" role="alert">{error}</p>}
-        {band.status === 'voting' && (
-          <p className="hint">방장도 참여자라서, 득표수는 마감한 뒤에 모두와 같이 봐요.</p>
-        )}
+        {band.status === 'voting' && <p className="hint">방장도 참여자라서, 점수는 마감한 뒤에 모두와 같이 봐요.</p>}
       </section>
 
       <section className="lp-section">
@@ -161,17 +232,41 @@ export default function LeaderPanel({ state, token, notify, onClose, onEditSetti
           <div>
             <div className="invite-code">{band.invite_code}</div>
             <div className="muted small">
-              {members.length}/{band.max_members}명
+              {members.length + waiting.length}/{band.max_members}명 · {band.join_approval ? '승인 후 입장' : '바로 입장'}
             </div>
           </div>
           <button className="ghost-btn" onClick={shareInvite}>
             <Icon name="copy" size={16} /> 초대하기
           </button>
         </div>
+        {!confirmCode ? (
+          <button className="text-btn" onClick={() => setConfirmCode(true)}>
+            참여코드 새로 만들기
+          </button>
+        ) : (
+          <div className="confirm-box">
+            <p>예전 코드와 링크로는 더 못 들어와요. 이미 들어온 사람은 그대로예요. 다시 로그인할 땐 새 코드를 써야 해요.</p>
+            <div className="row-btns">
+              <button className="ghost-btn" onClick={() => setConfirmCode(false)}>
+                취소
+              </button>
+              <Button
+                className="primary-btn"
+                busy={busy === 'code'}
+                onClick={async () => {
+                  const r = await act('code', () => regenerateInviteCode(token), (x) => `새 코드: ${x.invite_code}`);
+                  if (r) setConfirmCode(false);
+                }}
+              >
+                새로 만들기
+              </Button>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="lp-section">
-        <h3 className="section-title">멤버</h3>
+        <h3 className="section-title">멤버 {members.length}명</h3>
         {tempPin && (
           <div className="temp-pin" role="status">
             <div>
@@ -187,45 +282,93 @@ export default function LeaderPanel({ state, token, notify, onClose, onEditSetti
           </div>
         )}
         <ul className="member-list">
-          {members.map((m) => (
-            <li key={m.id}>
-              <span className="m-name">
-                {m.name}
-                {m.role === 'leader' && <small className="leader-chip">방장</small>}
-              </span>
-              <span className="m-state small muted">
-                {band.status === 'voting' || band.status === 'done'
-                  ? m.voted
-                    ? '투표함'
-                    : '투표 전'
-                  : `곡 ${m.song_count}개`}
-              </span>
-              {m.id !== me.id &&
-                (resetFor === m.id ? (
-                  <span className="m-confirm">
-                    <button className="ghost-btn small" onClick={() => setResetFor(null)} disabled={busy}>
-                      취소
-                    </button>
-                    <Button className="danger-btn small" busy={busy} onClick={() => doReset(m)}>
-                      초기화
-                    </Button>
+          {members.map((m) => {
+            const open = openMember === m.id;
+            const confirmKind = confirmAction?.id === m.id ? confirmAction.kind : null;
+            return (
+              <li key={m.id} className={open ? 'open' : ''}>
+                <div className="member-row">
+                  <span className="m-name">
+                    {m.name}
+                    {m.role === 'leader' && <small className="leader-chip">방장</small>}
+                    {m.parts?.length > 0 && <small className="m-parts">{m.parts.join(' · ')}</small>}
                   </span>
-                ) : (
-                  <button className="ghost-btn small" onClick={() => setResetFor(m.id)}>
-                    <Icon name="key" size={14} /> PIN 초기화
-                  </button>
-                ))}
-            </li>
-          ))}
+                  <span className="m-state small muted">
+                    {band.status === 'voting' || band.status === 'done'
+                      ? m.voted
+                        ? '투표함'
+                        : state.groups.length > 1 && m.voted_groups > 0
+                          ? `투표 ${m.voted_groups}/${state.groups.length}`
+                          : '투표 전'
+                      : `곡 ${m.song_count}개`}
+                  </span>
+                  {m.id !== me.id && (
+                    <button
+                      className="icon-btn"
+                      onClick={() => {
+                        setOpenMember(open ? null : m.id);
+                        setConfirmAction(null);
+                      }}
+                      aria-expanded={open}
+                      aria-label={`${m.name} 관리`}
+                    >
+                      <Icon name={open ? 'close' : 'key'} size={16} />
+                    </button>
+                  )}
+                </div>
+                {open && (
+                  <div className="member-actions">
+                    {confirmKind ? (
+                      <>
+                        <span className="grow small">
+                          {confirmKind === 'reset'
+                            ? `${m.name}의 PIN을 초기화할까요? 기존 로그인이 모두 풀려요.`
+                            : `${m.name}을(를) 내보낼까요? 올린 곡과 표도 같이 지워져요.`}
+                        </span>
+                        <button className="ghost-btn small" onClick={() => setConfirmAction(null)}>
+                          아니요
+                        </button>
+                        <Button
+                          className="danger-btn small"
+                          busy={busy === `${confirmKind}-${m.id}`}
+                          onClick={async () => {
+                            if (confirmKind === 'reset') {
+                              const r = await act(`reset-${m.id}`, () => resetPin(token, m.id));
+                              if (r) setTempPin({ name: m.name, pin: r.temp_pin });
+                            } else {
+                              await act(`kick-${m.id}`, () => removeMember(token, m.id), `${m.name} 내보냈어요`);
+                            }
+                            setConfirmAction(null);
+                            setOpenMember(null);
+                          }}
+                        >
+                          {confirmKind === 'reset' ? '초기화' : '내보내기'}
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <button className="ghost-btn small" onClick={() => setConfirmAction({ id: m.id, kind: 'reset' })}>
+                          <Icon name="key" size={14} /> PIN 초기화
+                        </button>
+                        <button className="ghost-btn small danger" onClick={() => setConfirmAction({ id: m.id, kind: 'kick' })}>
+                          <Icon name="trash" size={14} /> 내보내기
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </li>
+            );
+          })}
         </ul>
-        <p className="hint">PIN을 잊은 멤버만 초기화해요. 초기화하면 그 사람의 기존 로그인은 모두 풀려요.</p>
+        <p className="hint">PIN을 잊은 멤버는 PIN 초기화, 잘못 들어온 사람은 내보내기.</p>
       </section>
 
       <section className="lp-section">
-        <button className="row-link" onClick={onEditSettings} disabled={band.status === 'done'}>
+        <button className="row-link" onClick={onEditSettings}>
           <span>
             <strong>방 설정 수정</strong>
-            <small>{band.status === 'done' ? '확정된 방은 바꿀 수 없어요' : '마감일, 인원수, 규칙 등'}</small>
+            <small>{band.status === 'done' ? '이름, 인원, 입장 방식, 파트 편성' : '마감일, 인원수, 투표·참여 규칙, 파트 편성'}</small>
           </span>
           <Icon name="chevron" size={18} />
         </button>

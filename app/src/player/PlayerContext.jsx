@@ -5,7 +5,7 @@ import { createContext, useCallback, useContext, useMemo, useRef, useState } fro
 
 const PlayerCtx = createContext(null);
 
-export function PlayerProvider({ children }) {
+export function PlayerProvider({ bandId, children }) {
   const [current, setCurrent] = useState(null);
   const [queue, setQueue] = useState([]);
   const [playing, setPlaying] = useState(false);
@@ -32,8 +32,8 @@ export function PlayerProvider({ children }) {
   const value = useMemo(() => {
     const idx = current ? queue.findIndex((s) => s.id === current.id) : -1;
     const next = idx >= 0 && idx < queue.length - 1 ? queue[idx + 1] : null;
-    return { current, playing, setPlaying, play, stop, next, controls };
-  }, [current, queue, playing, play, stop]);
+    return { bandId, current, playing, setPlaying, play, stop, next, controls };
+  }, [bandId, current, queue, playing, play, stop]);
 
   return <PlayerCtx.Provider value={value}>{children}</PlayerCtx.Provider>;
 }

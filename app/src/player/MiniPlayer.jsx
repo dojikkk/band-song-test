@@ -8,6 +8,7 @@ import Icon from '../components/Icon';
 import Wave from '../components/Wave';
 import { usePlayer } from './PlayerContext';
 import { fmtTime, loadYouTubeApi, watchUrl, ytErrorText } from '../lib/youtube';
+import { markListened } from '../lib/listened';
 
 const S = { UNSTARTED: -1, ENDED: 0, PLAYING: 1, PAUSED: 2, BUFFERING: 3, CUED: 5 };
 
@@ -18,7 +19,7 @@ export default function MiniPlayer() {
 }
 
 function PlayerSheet() {
-  const { current: song, next, play, stop, setPlaying, controls } = usePlayer();
+  const { bandId, current: song, next, play, stop, setPlaying, controls } = usePlayer();
   const hostRef = useRef(null);
   const ytRef = useRef(null);
   const [ready, setReady] = useState(false);
@@ -147,6 +148,14 @@ function PlayerSheet() {
   const inRange = end != null && t >= range.start - 0.75 && t <= end + 0.75;
   const progress = inRange ? Math.min(1, Math.max(0, (t - range.start) / (end - range.start))) : 0;
   const busy = ytState === S.PLAYING || ytState === S.BUFFERING;
+
+  // "청취 후 투표"용: 하이라이트를 60% 넘게 들었거나(없으면 30초) 끝까지 들으면 '들음'으로 기록
+  const heard =
+    (ytState === S.ENDED && mode === 'highlight') ||
+    (ytState === S.PLAYING && (hasHl ? inRange && progress >= 0.6 : t >= 30));
+  useEffect(() => {
+    if (heard) markListened(bandId, song.id);
+  }, [heard, bandId, song.id]);
   const adLikely = adTicks >= 6; // 1.5초 넘게 이어질 때만 (곡 넘길 때 잠깐 0초인 건 무시)
 
   const seekTo = (frac) => {

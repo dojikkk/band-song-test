@@ -2,6 +2,7 @@
 //  1) 방장/참여자 화면을 따로 만들지 않음 → 공용 화면[C] + 방장에게만 오버레이[D]
 //  2) 설정[B]과 진행[C]은 시간축으로 분리 → 설정중이면 방장은 설정 마법사, 멤버는 대기 화면
 //  3) [C]는 한 자리가 status에 따라 변신 → 곡 수합 / 투표 / 결과
+//  V2: 곡 탭 옆에 '파트'(확정 후)·'합주 일정' 탭, 승인 대기자는 대기 화면
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Icon from '../components/Icon';
 import StatusSteps from '../components/StatusSteps';
@@ -20,10 +21,16 @@ import Results from './room/Results';
 import LeaderPanel from './room/LeaderPanel';
 import SettingsSheet from './room/SettingsSheet';
 import MeSheet, { ChangePinSheet } from './room/MeSheet';
+import GroupSheet from './room/GroupSheet';
+import Parts from './room/Parts';
+import Schedule from './room/Schedule';
+import PendingRoom from './PendingRoom';
+
+const SONG_TAB_LABEL = { collecting: '곡 수합', voting: '투표', done: '결과' };
 
 export default function Room({ room, onExit, onExpired }) {
   return (
-    <PlayerProvider>
+    <PlayerProvider bandId={room.band_id}>
       <RoomInner room={room} onExit={onExit} onExpired={onExpired} />
     </PlayerProvider>
   );
@@ -31,7 +38,9 @@ export default function Room({ room, onExit, onExpired }) {
 
 function RoomInner({ room, onExit, onExpired }) {
   const { state, loadError, refresh, notify } = useBandState(room.token, room.band_id, onExpired);
-  const [sheet, setSheet] = useState(null); // 'leader' | 'settings' | 'me'
+  const [sheet, setSheet] = useState(null); // 'leader' | 'settings' | 'me' | 'groups'
+  const [sheetBack, setSheetBack] = useState(null); // 설정 시트를 닫으면 돌아갈 곳
+  const [tab, setTab] = useState('songs');
   const [barEl, setBarEl] = useState(null);
   const [dockH, setDockH] = useState(0);
 
@@ -87,16 +96,32 @@ function RoomInner({ room, onExit, onExpired }) {
     );
   }
 
+  // 승인 대기 중
+  if (state.pending) {
+    return <PendingRoom state={state} onLogout={doLogout} onOtherRooms={() => onExit()} />;
+  }
+
   const { band, me } = state;
   const isLeader = me.role === 'leader';
   const common = { state, token: room.token, notify };
+  const openSettings = (back) => {
+    setSheetBack(back);
+    setSheet('settings');
+  };
+  const waitingCount = state.members.filter((m) => m.status === 'pending').length;
 
   const sheets = (
     <>
       {sheet === 'leader' && (
-        <LeaderPanel {...common} onClose={() => setSheet(null)} onEditSettings={() => setSheet('settings')} />
+        <LeaderPanel
+          {...common}
+          onClose={() => setSheet(null)}
+          onEditSettings={() => openSettings('leader')}
+          onOpenGroups={() => setSheet('groups')}
+        />
       )}
-      {sheet === 'settings' && <SettingsSheet {...common} onClose={() => setSheet('leader')} />}
+      {sheet === 'settings' && <SettingsSheet {...common} onClose={() => setSheet(sheetBack)} />}
+      {sheet === 'groups' && <GroupSheet {...common} onClose={() => setSheet(null)} />}
       {sheet === 'me' && (
         <MeSheet
           state={state}
@@ -121,6 +146,23 @@ function RoomInner({ room, onExit, onExpired }) {
       </>
     );
   }
+
+  // 탭: 곡(단계별) / 파트(확정 후) / 합주 일정
+  const myOpenSlots =
+    band.status === 'done'
+      ? state.slots.filter((x) => state.songs.some((s) => s.id === x.song_id && s.selected) && !x.assignee).length
+      : 0;
+  const todayStr = new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD (내 기기 기준)
+  const upcomingRehearsals = state.rehearsals.filter((r) => r.day >= todayStr).length;
+  const tabs =
+    band.status === 'setup'
+      ? []
+      : [
+          { key: 'songs', label: SONG_TAB_LABEL[band.status] },
+          ...(band.status === 'done' ? [{ key: 'parts', label: '파트', badge: myOpenSlots ? `미정 ${myOpenSlots}` : null }] : []),
+          { key: 'schedule', label: '합주 일정', badge: upcomingRehearsals || null },
+        ];
+  const activeTab = tabs.some((t) => t.key === tab) ? tab : 'songs';
 
   const deadline =
     band.status === 'collecting'
@@ -150,19 +192,44 @@ function RoomInner({ room, onExit, onExpired }) {
             <button className="leader-bar" onClick={() => setSheet('leader')}>
               <Icon name="baton" size={18} />
               <span>
-                <strong>방장 메뉴</strong>
+                <strong>
+                  방장 메뉴{waitingCount > 0 && <em className="badge">입장 대기 {waitingCount}</em>}
+                </strong>
                 <small>단계 넘기기 · 참여 현황 · 멤버 · 설정</small>
               </span>
               <Icon name="chevron" size={16} />
             </button>
           )}
+          {tabs.length > 1 && (
+            <nav className="room-tabs" role="tablist" aria-label="방 메뉴">
+              {tabs.map((t) => (
+                <button
+                  key={t.key}
+                  role="tab"
+                  aria-selected={activeTab === t.key}
+                  className={activeTab === t.key ? 'on' : ''}
+                  onClick={() => {
+                    setTab(t.key);
+                    window.scrollTo({ top: 0 });
+                  }}
+                >
+                  {t.label}
+                  {t.badge ? <em className="badge">{t.badge}</em> : null}
+                </button>
+              ))}
+            </nav>
+          )}
         </header>
 
         <main>
           {band.status === 'setup' && <WaitingRoom state={state} />}
-          {band.status === 'collecting' && <Collecting {...common} />}
-          {band.status === 'voting' && <Voting {...common} />}
-          {band.status === 'done' && <Results {...common} />}
+          {activeTab === 'songs' && band.status === 'collecting' && (
+            <Collecting {...common} onOpenGroups={() => setSheet('groups')} />
+          )}
+          {activeTab === 'songs' && band.status === 'voting' && <Voting {...common} />}
+          {activeTab === 'songs' && band.status === 'done' && <Results {...common} />}
+          {activeTab === 'parts' && <Parts {...common} onEditSettings={() => openSettings(null)} />}
+          {activeTab === 'schedule' && <Schedule {...common} />}
         </main>
       </div>
 

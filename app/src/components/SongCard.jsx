@@ -1,10 +1,14 @@
 // 곡 카드: 썸네일(누르면 미니 플레이어로 재생) + 제목/아티스트 + 하이라이트 + 코멘트
+//          + 그룹 표시 + 다른 서비스에서 듣기 링크
+import { useState } from 'react';
 import Icon from './Icon';
 import { usePlayer } from '../player/PlayerContext';
 import { fmtTime, thumbUrl } from '../lib/youtube';
+import { streamLinks } from '../lib/links';
 
-export default function SongCard({ song, queue, showSubmitter = true, badge, children, className = '' }) {
+export default function SongCard({ song, queue, showSubmitter = true, badge, groups, children, className = '' }) {
   const player = usePlayer();
+  const [showLinks, setShowLinks] = useState(false);
   const isCurrent = player?.current?.id === song.id;
   const isPlaying = isCurrent && player.playing;
 
@@ -39,15 +43,40 @@ export default function SongCard({ song, queue, showSubmitter = true, badge, chi
               <span className="by">{song.mine ? '내가 올림' : song.submitter ? `${song.submitter} 추천` : '익명 추천'}</span>
             )}
           </div>
-          {song.highlight_start != null ? (
-            <span className="hl-tag">
-              ✦ {fmtTime(song.highlight_start)}–{fmtTime(song.highlight_end)}
-            </span>
-          ) : (
-            <span className="hl-tag none">처음부터 재생</span>
-          )}
+          <div className="tag-row">
+            {song.highlight_start != null ? (
+              <span className="hl-tag">
+                ✦ {fmtTime(song.highlight_start)}–{fmtTime(song.highlight_end)}
+              </span>
+            ) : (
+              <span className="hl-tag none">처음부터 재생</span>
+            )}
+            {groups?.map((g) => (
+              <span key={g.id} className="group-tag">
+                {g.name}
+              </span>
+            ))}
+            <button
+              className="links-toggle"
+              onClick={() => setShowLinks((v) => !v)}
+              aria-expanded={showLinks}
+              aria-label="다른 앱에서 듣기"
+            >
+              다른 앱
+            </button>
+          </div>
         </div>
       </div>
+      {showLinks && (
+        <div className="stream-links">
+          {streamLinks(song).map((l) => (
+            <a key={l.key} href={l.href} target="_blank" rel="noreferrer" title={l.exact ? '정확한 곡 링크' : '검색 결과로 열기'}>
+              {l.label}
+              {!l.exact && <small>검색</small>}
+            </a>
+          ))}
+        </div>
+      )}
       {song.comment && <p className="song-comment">{song.comment}</p>}
       {children}
     </article>

@@ -17,7 +17,7 @@ import {
 
 const PAGES = [
   { key: 'basic', title: '기본 설정', desc: '밴드 이름과 인원수를 정해요.' },
-  { key: 'vote', title: '투표 방식', desc: '이번 버전은 다수결이에요. 한 사람이 몇 곡에 투표할지 정해요.' },
+  { key: 'vote', title: '투표 방식', desc: '다수결로 할지 순위 매기기(점수제)로 할지, 곡을 그룹으로 나눌지 정해요.' },
   { key: 'rules', title: '참여 규칙', desc: '곡을 몇 개씩 올릴지, 무엇을 공개할지 정해요.' },
   { key: 'schedule', title: '일정 · 확정', desc: '마감일을 정하고 설정을 확인해요.' },
 ];

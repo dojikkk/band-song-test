@@ -95,6 +95,9 @@ export default function JoinFlow({ initialCode, onBack, onEntered }) {
               코드 바꾸기
             </button>
           </div>
+          {band.join_approval && mode === 'new' && (
+            <p className="banner">이 방은 방장이 승인해야 참여할 수 있어요. 입장 신청 후 잠깐 기다려 주세요.</p>
+          )}
 
           <div className="seg wide" role="tablist" aria-label="입장 방식">
             <button

@@ -34,6 +34,31 @@ const MESSAGES = {
   VOTE_LOCKED: '이 방은 투표 후 수정이 꺼져 있어요.',
   NOT_DONE: '투표가 마감된 뒤에 할 수 있어요.',
   USE_CHANGE_PIN: '내 PIN은 내 메뉴의 "PIN 바꾸기"에서 바꿔요.',
+  // V2
+  PENDING_APPROVAL: '방장이 아직 입장을 승인하지 않았어요.',
+  GROUPS_LOCKED: '투표가 시작돼서 그룹은 더 바꿀 수 없어요.',
+  BAD_GROUP_NAME: '그룹 이름은 1~20글자로 써 주세요.',
+  GROUP_LIMIT: '그룹은 10개까지 만들 수 있어요.',
+  GROUP_NAME_TAKEN: '이미 있는 그룹 이름이에요.',
+  BAD_GROUP: '없는 그룹이에요. 화면을 새로 불러올게요.',
+  MULTI_GROUP_OFF: '한 곡은 그룹 하나에만 넣을 수 있어요. (설정에서 "여러 그룹에 넣기"를 켜면 가능)',
+  MULTI_GROUP_IN_USE: '두 그룹 이상에 들어간 곡이 있어서 끌 수 없어요. 먼저 한 그룹으로 정리해 주세요.',
+  NO_GROUPS: '그룹을 하나 이상 만들어야 투표를 시작할 수 있어요.',
+  UNGROUPED_SONGS: '아직 그룹에 안 넣은 곡이 있어요. 모든 곡을 그룹에 넣어야 투표를 시작할 수 있어요.',
+  INCOMPLETE_RANKING: '그룹 안의 곡을 전부 순위 매겨야 제출할 수 있어요.',
+  CANNOT_REMOVE_LEADER: '방장은 내보낼 수 없어요.',
+  KICK_LOCKED: '투표 중에는 곡을 올린 멤버를 내보낼 수 없어요. (다른 사람 순위표가 깨져서)',
+  TOO_MANY_PARTS: '파트는 6개까지 고를 수 있어요.',
+  BAD_SLOT_NAME: '파트 이름은 1~12글자로 써 주세요.',
+  SLOT_LIMIT: '한 곡에 파트는 12개까지예요.',
+  DUPLICATE_SLOT: '이 곡에 이미 있는 파트예요.',
+  BAD_SLOT: '없는 파트예요. 화면을 새로 불러올게요.',
+  NO_SCHEDULE: '열려 있는 일정 조율이 없어요.',
+  BAD_CELLS: '조율 범위 밖의 시간이 들어 있어요. 화면을 새로 불러올게요.',
+  BAD_DATE_RANGE: '날짜 범위를 확인해 주세요. (최대 3주)',
+  BAD_HOUR_RANGE: '시간 범위를 확인해 주세요. 끝이 시작보다 뒤여야 해요.',
+  BAD_REHEARSAL: '없는 합주 일정이에요.',
+  REHEARSAL_LIMIT: '합주 일정은 50개까지 저장돼요. 지난 일정을 지워 주세요.',
 };
 
 export class AppError extends Error {
@@ -113,9 +138,21 @@ export const saveSong = (token, song) =>
 export const deleteSong = (token, songId) =>
   rpc('delete_song', { p_token: token, p_song_id: songId });
 
-// [C-2] 투표
-export const submitVotes = (token, songIds) =>
-  rpc('submit_votes', { p_token: token, p_song_ids: songIds });
+// [C-2] 투표 — 그룹 하나씩 제출. 점수제면 songIds 순서가 곧 순위(1등이 맨 앞)
+export const submitBallot = (token, groupId, songIds) =>
+  rpc('submit_ballot', { p_token: token, p_group_id: groupId, p_song_ids: songIds });
+
+// 그룹 나누기 (방장)
+export const createGroup = (token, name) => rpc('create_group', { p_token: token, p_name: name });
+export const renameGroup = (token, groupId, name) =>
+  rpc('rename_group', { p_token: token, p_group_id: groupId, p_name: name });
+export const deleteGroup = (token, groupId) => rpc('delete_group', { p_token: token, p_group_id: groupId });
+export const setSongGroups = (token, songId, groupIds) =>
+  rpc('set_song_groups', { p_token: token, p_song_id: songId, p_group_ids: groupIds });
+
+// 스트리밍 링크
+export const setSongLinks = (token, songId, links) =>
+  rpc('set_song_links', { p_token: token, p_song_id: songId, p_links: links });
 
 // [C-3] 결과
 export const setSelected = (token, songId, selected) =>
@@ -124,6 +161,43 @@ export const setSelected = (token, songId, selected) =>
 // [D-1] 멤버
 export const resetPin = (token, memberId) =>
   rpc('reset_pin', { p_token: token, p_member_id: memberId });
+export const approveMember = (token, memberId) =>
+  rpc('approve_member', { p_token: token, p_member_id: memberId });
+export const removeMember = (token, memberId) =>
+  rpc('remove_member', { p_token: token, p_member_id: memberId });
+export const regenerateInviteCode = (token) => rpc('regenerate_invite_code', { p_token: token });
+export const setMyParts = (token, parts) => rpc('set_my_parts', { p_token: token, p_parts: parts });
+
+// 파트 배분
+export const addSlot = (token, songId, name) => rpc('add_slot', { p_token: token, p_song_id: songId, p_name: name });
+export const removeSlot = (token, slotId) => rpc('remove_slot', { p_token: token, p_slot_id: slotId });
+export const assignSlot = (token, slotId, memberId) =>
+  rpc('assign_slot', { p_token: token, p_slot_id: slotId, p_member_id: memberId });
+export const toggleSlotRequest = (token, slotId) =>
+  rpc('toggle_slot_request', { p_token: token, p_slot_id: slotId });
+
+// 합주 일정
+export const createSchedule = (token, { title, startDate, endDate, startHour, endHour }) =>
+  rpc('create_schedule', {
+    p_token: token,
+    p_title: title,
+    p_start_date: startDate,
+    p_end_date: endDate,
+    p_start_hour: startHour,
+    p_end_hour: endHour,
+  });
+export const deleteSchedule = (token) => rpc('delete_schedule', { p_token: token });
+export const setAvailability = (token, cells) => rpc('set_availability', { p_token: token, p_cells: cells });
+export const addRehearsal = (token, { day, startHour, endHour, place, note }) =>
+  rpc('add_rehearsal', {
+    p_token: token,
+    p_day: day,
+    p_start_hour: startHour,
+    p_end_hour: endHour,
+    p_place: place ?? null,
+    p_note: note ?? null,
+  });
+export const deleteRehearsal = (token, id) => rpc('delete_rehearsal', { p_token: token, p_rehearsal_id: id });
 
 export function errorText(e) {
   return e instanceof AppError ? e.text : '문제가 생겼어요. 잠시 뒤 다시 해 주세요.';

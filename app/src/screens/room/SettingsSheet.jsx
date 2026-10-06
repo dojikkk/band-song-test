@@ -4,6 +4,7 @@ import { Button, Sheet, useToast } from '../../components/ui';
 import { errorText, updateSettings } from '../../lib/api';
 import {
   BasicFields,
+  LineupField,
   RuleFields,
   ScheduleFields,
   VoteFields,
@@ -49,14 +50,27 @@ export default function SettingsSheet({ state, token, notify, onClose }) {
         </>
       }
     >
-      <h3 className="section-title">일정</h3>
-      <ScheduleFields draft={draft} set={set} status={band.status} />
+      {band.status === 'done' && (
+        <p className="hint">확정된 방이라 이름·인원·입장 방식·파트 편성만 바꿀 수 있어요.</p>
+      )}
+      {band.status !== 'done' && (
+        <>
+          <h3 className="section-title">일정</h3>
+          <ScheduleFields draft={draft} set={set} status={band.status} />
+        </>
+      )}
       <h3 className="section-title">기본</h3>
       <BasicFields draft={draft} set={set} status={band.status} memberCount={members.length} />
-      <h3 className="section-title">투표</h3>
-      <VoteFields draft={draft} set={set} status={band.status} />
-      <h3 className="section-title">참여 규칙</h3>
-      <RuleFields draft={draft} set={set} status={band.status} />
+      {band.status !== 'done' && (
+        <>
+          <h3 className="section-title">투표</h3>
+          <VoteFields draft={draft} set={set} status={band.status} />
+          <h3 className="section-title">참여 규칙</h3>
+          <RuleFields draft={draft} set={set} status={band.status} />
+        </>
+      )}
+      <h3 className="section-title">파트 편성</h3>
+      <LineupField draft={draft} set={set} />
     </Sheet>
   );
 }
