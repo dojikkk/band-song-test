@@ -14,7 +14,7 @@ import {
   toggleSlotRequest,
 } from '../../lib/api';
 import { activeMembers, memberName } from '../../lib/selectors';
-import { thumbUrl } from '../../lib/youtube';
+import { SongThumb } from '../../components/SongCard';
 
 const PRESETS = ['보컬', '코러스', '기타', '베이스', '드럼', '키보드'];
 
@@ -98,7 +98,7 @@ export default function Parts({ state, token, notify, onEditSettings }) {
             {finals.map((f) => (
               <article className="card part-card" key={f.id}>
                 <div className="part-head">
-                  <img src={thumbUrl(f.youtube_id)} alt="" loading="lazy" onError={(e) => (e.currentTarget.style.visibility = 'hidden')} />
+                  <SongThumb song={f} />
                   <div>
                     <strong>{f.title}</strong>
                     <small>{f.artist || '아티스트 미입력'}</small>

@@ -6,7 +6,7 @@ import Icon from '../../components/Icon';
 import { Button, Sheet, useToast } from '../../components/ui';
 import { createGroup, deleteGroup, errorText, renameGroup, setSongGroups } from '../../lib/api';
 import { groupsBySong } from '../../lib/selectors';
-import { thumbUrl } from '../../lib/youtube';
+import { SongThumb } from '../../components/SongCard';
 
 export default function GroupSheet({ state, token, notify, onClose }) {
   const { band, songs, groups } = state;
@@ -131,7 +131,7 @@ export default function GroupSheet({ state, token, notify, onClose }) {
             return (
               <li key={s.id} className={mine.length === 0 ? 'is-ungrouped' : ''}>
                 <div className="assign-song">
-                  <img src={thumbUrl(s.youtube_id)} alt="" loading="lazy" onError={(e) => (e.currentTarget.style.visibility = 'hidden')} />
+                  <SongThumb song={s} />
                   <div>
                     <strong>{s.title}</strong>
                     <small>{s.artist || '아티스트 미입력'}</small>

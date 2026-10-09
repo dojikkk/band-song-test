@@ -14,7 +14,8 @@ export function PlayerProvider({ bandId, children }) {
   currentRef.current = current;
 
   const play = useCallback((song, list) => {
-    if (list) setQueue(list);
+    if (!song?.youtube_id) return; // 유튜브 영상이 없는 곡(텍스트 곡)은 재생할 게 없음
+    if (list) setQueue(list.filter((s) => s.youtube_id));
     // 지금 나오는 곡을 또 누르면 일시정지/재생 토글
     if (currentRef.current && currentRef.current.id === song.id) {
       controls.current?.toggle();

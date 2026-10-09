@@ -55,9 +55,14 @@ export default function LeaderPanel({ state, token, notify, onClose, onEditSetti
   const bySong = band.use_groups ? groupsBySong(state) : null;
   const ungrouped = bySong ? state.songs.filter((s) => !bySong.has(s.id)).length : 0;
 
+  // 인당 0곡인 방: 곡 수합은 방장 혼자 → "곡 낸 사람" 현황 대신 후보곡 수만
+  const leaderOnly = band.songs_per_member === 0;
+
   // 참여 현황: 곡 수합이면 "곡 낸 사람", 투표면 "모든 그룹 투표 끝낸 사람"
   const pending =
-    band.status === 'collecting'
+    band.status === 'collecting' && leaderOnly
+      ? []
+      : band.status === 'collecting'
       ? members.filter((m) => m.song_count === 0)
       : band.status === 'voting'
         ? members.filter((m) => !m.voted)
@@ -160,7 +165,19 @@ export default function LeaderPanel({ state, token, notify, onClose, onEditSetti
         <h3 className="section-title">진행</h3>
         <StatusSteps status={band.status} />
 
-        {(band.status === 'collecting' || band.status === 'voting') && (
+        {band.status === 'collecting' && leaderOnly && (
+          <div className="lp-progress">
+            <div className="lp-progress-top">
+              <span>
+                후보곡 <strong>{state.songs.length}</strong>곡
+              </span>
+              {deadline && <span className="deadline-chip">{dday(deadline)}</span>}
+            </div>
+            <p className="hint">멤버는 곡을 안 올리는 방이에요. 후보곡을 다 올렸으면 투표를 시작해요.</p>
+          </div>
+        )}
+
+        {((band.status === 'collecting' && !leaderOnly) || band.status === 'voting') && (
           <div className="lp-progress">
             <div className="lp-progress-top">
               <span>
@@ -220,7 +237,7 @@ export default function LeaderPanel({ state, token, notify, onClose, onEditSetti
             </div>
           )
         ) : (
-          <p className="muted small">모든 단계가 끝났어요. 결과 화면에서 최종 곡을 선정하고, 파트·합주 탭에서 이어가요.</p>
+          <p className="muted small">모든 단계가 끝났어요. 결과 화면에서 최종 곡을 선정하고, 파트 탭에서 파트를 나눠요.</p>
         )}
         {error && <p className="form-error" role="alert">{error}</p>}
         {band.status === 'voting' && <p className="hint">방장도 참여자라서, 점수는 마감한 뒤에 모두와 같이 봐요.</p>}

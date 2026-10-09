@@ -1,5 +1,7 @@
-// [C-1] 곡 올리기 / 교체 — 유튜브 링크 + 하이라이트 구간 + 코멘트
-// 미리보기 플레이어로 직접 들으면서 "지금 위치"를 눌러 구간을 잡음.
+// [C-1] 곡 올리기 / 교체
+//  · 유튜브를 쓰는 방: 유튜브 링크 + 하이라이트 구간 + 코멘트
+//    미리보기 플레이어로 직접 들으면서 "지금 위치"를 눌러 구간을 잡음.
+//  · 유튜브를 안 쓰는 방: 제목 + 아티스트(+ 코멘트)만. 플레이어·하이라이트 없음
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Button, Sheet, TextField } from '../../components/ui';
 import { errorText, saveSong, setSongLinks } from '../../lib/api';
@@ -16,8 +18,97 @@ import {
 
 const BLOCKING = [2, 100, 101, 150]; // 이 오류면 저장 막음 (아무도 못 들음)
 
-export default function AddSongSheet({ token, band, editing, onClose, onSaved, notify }) {
-  const [link, setLink] = useState(editing ? watchUrl(editing.youtube_id) : '');
+export default function AddSongSheet(props) {
+  return props.band.youtube_enabled ? <YouTubeSongSheet {...props} /> : <TextSongSheet {...props} />;
+}
+
+// 유튜브 없이 제목 + 아티스트만
+function TextSongSheet({ token, band, editing, onClose, onSaved }) {
+  const [title, setTitle] = useState(editing?.title || '');
+  const [artist, setArtist] = useState(editing?.artist || '');
+  const [comment, setComment] = useState(editing?.comment || '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const canSave = title.trim() && artist.trim();
+
+  const save = async (e) => {
+    e?.preventDefault();
+    if (!canSave) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await saveSong(token, {
+        id: editing?.id,
+        youtube_id: null,
+        title,
+        artist,
+        comment: band.allow_comments ? comment : null,
+      });
+      onSaved(editing ? '곡을 바꿨어요' : '곡을 올렸어요');
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Sheet
+      title={editing ? '곡 수정하기' : '곡 올리기'}
+      onClose={onClose}
+      footer={
+        <Button busy={busy} onClick={save} disabled={!canSave}>
+          {editing ? '이대로 바꾸기' : '올리기'}
+        </Button>
+      }
+    >
+      <form className="stack" onSubmit={save}>
+        <p className="hint">
+          이 방은 유튜브 링크 없이 제목과 아티스트만 올려요. 다들 곡 카드의 <strong>다른 앱</strong> 버튼으로 각자 음악
+          앱에서 찾아 들어요.
+        </p>
+        <TextField
+          label="곡 제목"
+          value={title}
+          onChange={(e) => setTitle(e.target.value.slice(0, 100))}
+          placeholder="예: 고민중독"
+          autoFocus={!editing}
+          autoComplete="off"
+        />
+        <TextField
+          label="아티스트"
+          value={artist}
+          onChange={(e) => setArtist(e.target.value.slice(0, 60))}
+          placeholder="예: QWER"
+          autoComplete="off"
+        />
+        {band.allow_comments && <CommentField value={comment} onChange={setComment} />}
+        {error && <p className="form-error" role="alert">{error}</p>}
+      </form>
+    </Sheet>
+  );
+}
+
+function CommentField({ value, onChange }) {
+  return (
+    <div className="field">
+      <label htmlFor="cm">추천 이유</label>
+      <textarea
+        id="cm"
+        rows={2}
+        value={value}
+        maxLength={200}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="예: 보컬 키 딱 맞고 드럼 필인이 재밌어요"
+      />
+      <p className="hint right">{value.length}/200</p>
+    </div>
+  );
+}
+
+// 유튜브 링크 + 하이라이트
+function YouTubeSongSheet({ token, band, editing, onClose, onSaved, notify }) {
+  const [link, setLink] = useState(editing?.youtube_id ? watchUrl(editing.youtube_id) : '');
   const parsed = useMemo(() => parseYouTube(link), [link]);
   const videoId = parsed?.id || null;
 
@@ -187,20 +278,7 @@ export default function AddSongSheet({ token, band, editing, onClose, onSaved, n
               }}
               placeholder="선택"
             />
-            {band.allow_comments && (
-              <div className="field">
-                <label htmlFor="cm">추천 이유</label>
-                <textarea
-                  id="cm"
-                  rows={2}
-                  value={comment}
-                  maxLength={200}
-                  onChange={(e) => setComment(e.target.value)}
-                  placeholder="예: 보컬 키 딱 맞고 드럼 필인이 재밌어요"
-                />
-                <p className="hint right">{comment.length}/200</p>
-              </div>
-            )}
+            {band.allow_comments && <CommentField value={comment} onChange={setComment} />}
           </>
         )}
         {error && <p className="form-error" role="alert">{error}</p>}

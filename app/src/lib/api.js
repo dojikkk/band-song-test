@@ -53,12 +53,15 @@ const MESSAGES = {
   SLOT_LIMIT: '한 곡에 파트는 12개까지예요.',
   DUPLICATE_SLOT: '이 곡에 이미 있는 파트예요.',
   BAD_SLOT: '없는 파트예요. 화면을 새로 불러올게요.',
-  NO_SCHEDULE: '열려 있는 일정 조율이 없어요.',
-  BAD_CELLS: '조율 범위 밖의 시간이 들어 있어요. 화면을 새로 불러올게요.',
-  BAD_DATE_RANGE: '날짜 범위를 확인해 주세요. (최대 3주)',
-  BAD_HOUR_RANGE: '시간 범위를 확인해 주세요. 끝이 시작보다 뒤여야 해요.',
-  BAD_REHEARSAL: '없는 합주 일정이에요.',
-  REHEARSAL_LIMIT: '합주 일정은 50개까지 저장돼요. 지난 일정을 지워 주세요.',
+  // V3
+  LOCKED_YOUTUBE: '유튜브 링크 사용 여부는 곡 수합을 시작한 뒤엔 바꿀 수 없어요.',
+  UNLIMITED_NAMED_ONLY: '방장 자유 추가 모드에서는 곡을 익명으로 올릴 수 없어요.',
+  UNLIMITED_ANON_LOCKED: '곡을 익명으로 받는 중이라 방장 자유 추가 모드를 켤 수 없어요. (켜면 올린 사람이 드러나요)',
+  ZERO_SONGS_NEEDS_UNLIMITED: '인당 0곡이면 방장 자유 추가 모드를 켜야 해요.',
+  LEADER_ADDS_ONLY: '이 방은 방장이 후보곡을 올려요. 멤버는 듣고 투표만 하면 돼요.',
+  NEED_ARTIST: '아티스트를 적어 주세요.',
+  BAD_ARTIST: '아티스트는 60글자까지 쓸 수 있어요.',
+  DUPLICATE_TITLE: '같은 제목·아티스트의 곡이 이미 올라와 있어요.',
 };
 
 export class AppError extends Error {
@@ -175,29 +178,6 @@ export const assignSlot = (token, slotId, memberId) =>
   rpc('assign_slot', { p_token: token, p_slot_id: slotId, p_member_id: memberId });
 export const toggleSlotRequest = (token, slotId) =>
   rpc('toggle_slot_request', { p_token: token, p_slot_id: slotId });
-
-// 합주 일정
-export const createSchedule = (token, { title, startDate, endDate, startHour, endHour }) =>
-  rpc('create_schedule', {
-    p_token: token,
-    p_title: title,
-    p_start_date: startDate,
-    p_end_date: endDate,
-    p_start_hour: startHour,
-    p_end_hour: endHour,
-  });
-export const deleteSchedule = (token) => rpc('delete_schedule', { p_token: token });
-export const setAvailability = (token, cells) => rpc('set_availability', { p_token: token, p_cells: cells });
-export const addRehearsal = (token, { day, startHour, endHour, place, note }) =>
-  rpc('add_rehearsal', {
-    p_token: token,
-    p_day: day,
-    p_start_hour: startHour,
-    p_end_hour: endHour,
-    p_place: place ?? null,
-    p_note: note ?? null,
-  });
-export const deleteRehearsal = (token, id) => rpc('delete_rehearsal', { p_token: token, p_rehearsal_id: id });
 
 export function errorText(e) {
   return e instanceof AppError ? e.text : '문제가 생겼어요. 잠시 뒤 다시 해 주세요.';

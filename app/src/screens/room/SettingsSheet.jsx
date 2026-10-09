@@ -5,11 +5,12 @@ import { errorText, updateSettings } from '../../lib/api';
 import {
   BasicFields,
   LineupField,
+  DeadlineFields,
   RuleFields,
-  ScheduleFields,
   VoteFields,
   diffSettings,
   pickSettings,
+  settingsProblem,
 } from '../settings/SettingsFields';
 
 export default function SettingsSheet({ state, token, notify, onClose }) {
@@ -21,6 +22,7 @@ export default function SettingsSheet({ state, token, notify, onClose }) {
   const set = (patch) => setDraft((d) => ({ ...d, ...patch }));
   const patch = diffSettings(pickSettings(band), draft);
   const changed = Object.keys(patch).length > 0;
+  const problem = settingsProblem(draft); // 예: 인당 0곡 + 방장 자유 추가 모드 꺼짐 → 저장 막음
 
   const save = async () => {
     setBusy(true);
@@ -44,7 +46,8 @@ export default function SettingsSheet({ state, token, notify, onClose }) {
       footer={
         <>
           {error && <p className="form-error" role="alert">{error}</p>}
-          <Button busy={busy} onClick={save} disabled={!changed || !draft.name?.trim()}>
+          {problem && <p className="form-error" role="alert">{problem}</p>}
+          <Button busy={busy} onClick={save} disabled={!changed || !draft.name?.trim() || !!problem}>
             저장
           </Button>
         </>
@@ -55,8 +58,8 @@ export default function SettingsSheet({ state, token, notify, onClose }) {
       )}
       {band.status !== 'done' && (
         <>
-          <h3 className="section-title">일정</h3>
-          <ScheduleFields draft={draft} set={set} status={band.status} />
+          <h3 className="section-title">마감일</h3>
+          <DeadlineFields draft={draft} set={set} status={band.status} />
         </>
       )}
       <h3 className="section-title">기본</h3>
@@ -66,7 +69,7 @@ export default function SettingsSheet({ state, token, notify, onClose }) {
           <h3 className="section-title">투표</h3>
           <VoteFields draft={draft} set={set} status={band.status} />
           <h3 className="section-title">참여 규칙</h3>
-          <RuleFields draft={draft} set={set} status={band.status} />
+          <RuleFields draft={draft} set={set} status={band.status} initial={band} />
         </>
       )}
       <h3 className="section-title">파트 편성</h3>

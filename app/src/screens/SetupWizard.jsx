@@ -1,5 +1,5 @@
 // [B] 방장 · 방 설정 (상태 = 설정중). 4단계로 나눠 차근차근.
-//  B-1 기본 설정 → B-2 투표 방식 → B-3 참여 규칙 → B-4 일정·확정
+//  B-1 기본 설정 → B-2 투표 방식 → B-3 참여 규칙 → B-4 마감·확정
 //  "다음"을 누를 때마다 저장. 마지막에 "곡 수합 시작"을 눌러야 멤버들이 곡을 올릴 수 있음.
 import { useState } from 'react';
 import Icon from '../components/Icon';
@@ -8,18 +8,19 @@ import { advanceStatus, errorText, updateSettings } from '../lib/api';
 import {
   BasicFields,
   RuleFields,
-  ScheduleFields,
+  DeadlineFields,
   SettingsSummary,
   VoteFields,
   diffSettings,
   pickSettings,
+  settingsProblem,
 } from './settings/SettingsFields';
 
 const PAGES = [
   { key: 'basic', title: '기본 설정', desc: '밴드 이름과 인원수를 정해요.' },
   { key: 'vote', title: '투표 방식', desc: '다수결로 할지 순위 매기기(점수제)로 할지, 곡을 그룹으로 나눌지 정해요.' },
-  { key: 'rules', title: '참여 규칙', desc: '곡을 몇 개씩 올릴지, 무엇을 공개할지 정해요.' },
-  { key: 'schedule', title: '일정 · 확정', desc: '마감일을 정하고 설정을 확인해요.' },
+  { key: 'rules', title: '참여 규칙', desc: '곡을 어떻게, 몇 개씩 올릴지, 무엇을 공개할지 정해요.' },
+  { key: 'finish', title: '마감 · 확정', desc: '마감일을 정하고 설정을 확인해요.' },
 ];
 
 export default function SetupWizard({ state, token, notify, onOpenMe }) {
@@ -31,9 +32,18 @@ export default function SetupWizard({ state, token, notify, onOpenMe }) {
   const [error, setError] = useState(null);
   const [confirming, setConfirming] = useState(false);
 
-  const set = (patch) => setDraft((d) => ({ ...d, ...patch }));
+  const set = (patch) => {
+    setDraft((d) => ({ ...d, ...patch }));
+    setError(null);
+  };
+  const problem = settingsProblem(draft);
 
   const save = async () => {
+    // 저장하면 안 되는 조합(예: 인당 0곡 + 방장 자유 추가 모드 꺼짐)은 여기서 막음
+    if (problem) {
+      setError(problem);
+      return false;
+    }
     const patch = diffSettings(pickSettings(band), draft);
     if (Object.keys(patch).length === 0) return true;
     try {
@@ -124,12 +134,15 @@ export default function SetupWizard({ state, token, notify, onOpenMe }) {
         {P.key === 'basic' && <BasicFields draft={draft} set={set} status={band.status} memberCount={members.length} />}
         {P.key === 'vote' && <VoteFields draft={draft} set={set} status={band.status} />}
         {P.key === 'rules' && <RuleFields draft={draft} set={set} status={band.status} />}
-        {P.key === 'schedule' && (
+        {P.key === 'finish' && (
           <>
-            <ScheduleFields draft={draft} set={set} status={band.status} />
+            <DeadlineFields draft={draft} set={set} status={band.status} />
             <h2 className="section-title">설정 요약</h2>
             <SettingsSummary band={{ ...band, ...draft }} />
-            <p className="hint">곡 수합을 시작한 뒤에도 대부분 고칠 수 있어요. 단, 올린 사람 숨기기는 지금 정한 대로 고정돼요.</p>
+            <p className="hint">
+              곡 수합을 시작한 뒤에도 대부분 고칠 수 있어요. 단, 유튜브 링크 사용과 올린 사람 숨기기는 지금 정한 대로
+              고정돼요.
+            </p>
           </>
         )}
       </section>
@@ -147,15 +160,23 @@ export default function SetupWizard({ state, token, notify, onOpenMe }) {
         </button>
       </section>
 
-      {error && <p className="form-error" role="alert">{error}</p>}
+      {error && error !== problem && <p className="form-error" role="alert">{error}</p>}
+      {problem && P.key !== 'rules' && (
+        <p className="form-error" role="alert">
+          {problem}{' '}
+          <button className="text-btn inline" onClick={() => setPage(PAGES.findIndex((x) => x.key === 'rules'))}>
+            참여 규칙으로 가기
+          </button>
+        </p>
+      )}
 
       <div className="wizard-actions">
         {page < PAGES.length - 1 ? (
-          <Button busy={busy} onClick={() => go(1)} disabled={!draft.name?.trim()}>
+          <Button busy={busy} onClick={() => go(1)} disabled={!draft.name?.trim() || !!problem}>
             다음
           </Button>
         ) : !confirming ? (
-          <Button busy={busy} onClick={() => setConfirming(true)}>
+          <Button busy={busy} onClick={() => setConfirming(true)} disabled={!!problem}>
             곡 수합 시작하기
           </Button>
         ) : (
@@ -175,7 +196,11 @@ export default function SetupWizard({ state, token, notify, onOpenMe }) {
           </div>
         )}
         {page === PAGES.length - 1 && !confirming && (
-          <button className="text-btn" onClick={async () => (await save()) && toast('저장했어요. 준비되면 시작을 눌러요.')}>
+          <button
+            className="text-btn"
+            disabled={!!problem}
+            onClick={async () => (await save()) && toast('저장했어요. 준비되면 시작을 눌러요.')}
+          >
             저장만 하고 나중에 시작
           </button>
         )}

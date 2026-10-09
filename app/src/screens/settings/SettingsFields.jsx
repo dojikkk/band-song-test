@@ -9,11 +9,21 @@ export function locks(status) {
   return {
     done: status === 'done', // 확정 후엔 이름·인원·입장 방식·파트 편성만
     anonSongs: status !== 'setup',
+    youtube: status !== 'setup', // 곡이 올라오기 시작하면 형식(유튜브/텍스트)이 섞이지 않게 고정
     voteRules: status === 'voting' || status === 'done',
   };
 }
 
 const LOCKED_VOTE = '투표가 시작돼서 바꿀 수 없어요';
+const LOCKED_COLLECT = '곡 수합이 시작돼서 바꿀 수 없어요';
+const LOCKED_UPLOAD = '곡 수합이 끝나서 바꿀 수 없어요';
+export const ZERO_NEEDS_UNLIMITED = '인당 0곡이면 방장 자유 추가 모드를 켜야 해요';
+
+// 저장하면 안 되는 조합 → 안내 문장 (없으면 null). DB CHECK 제약과 같은 규칙
+export function settingsProblem(d) {
+  if (d.songs_per_member === 0 && !d.leader_unlimited) return ZERO_NEEDS_UNLIMITED;
+  return null;
+}
 
 export function BasicFields({ draft, set, status, memberCount = 1 }) {
   return (
@@ -118,32 +128,76 @@ export function VoteFields({ draft, set, status }) {
   );
 }
 
-export function RuleFields({ draft, set, status }) {
+export function RuleFields({ draft, set, status, initial }) {
   const l = locks(status);
+  const problem = settingsProblem(draft);
+  // 이미 익명으로 곡을 받는 중이면 방장 자유 추가 모드를 켤 수 없음 (켜면 올린 사람이 드러남)
+  const unlimitedBlocked = l.anonSongs && !initial?.leader_unlimited && initial?.anonymous_songs;
   return (
     <div className="stack">
+      <Toggle
+        label="유튜브 링크 사용"
+        hint={
+          l.youtube
+            ? `${LOCKED_COLLECT} · 지금은 ${draft.youtube_enabled ? '유튜브 링크로 올려요' : '제목·아티스트만 올려요'}`
+            : draft.youtube_enabled
+              ? '유튜브 링크로 올리고, 하이라이트 구간을 미니 플레이어로 바로 들어요'
+              : '곡을 제목 + 아티스트로만 올려요. 플레이어 없이 각자 음악 앱에서 찾아 들어요'
+        }
+        checked={draft.youtube_enabled}
+        onChange={(v) => set({ youtube_enabled: v, ...(v ? {} : { require_listen: false }) })}
+        disabled={l.youtube}
+      />
       <Stepper
         label="한 사람이 올릴 수 있는 곡"
         value={draft.songs_per_member}
         onChange={(v) => set({ songs_per_member: v })}
-        min={1}
+        min={0}
         max={10}
         unit="곡"
         disabled={l.voteRules}
-        hint={l.voteRules ? '곡 수합이 끝나서 바꿀 수 없어요' : null}
+        hint={
+          l.voteRules
+            ? LOCKED_UPLOAD
+            : draft.songs_per_member === 0
+              ? '0곡이면 멤버는 곡을 못 올리고 듣기·투표만 해요'
+              : null
+        }
       />
+      <Toggle
+        label="방장 자유 추가 모드"
+        hint={
+          l.voteRules
+            ? LOCKED_UPLOAD
+            : unlimitedBlocked
+              ? '곡을 익명으로 받는 중이라 켤 수 없어요 (켜면 올린 사람이 드러나요)'
+              : draft.leader_unlimited
+                ? '방장은 개수 제한 없이 올려요. 그래서 올린 사람은 항상 공개돼요'
+                : '켜면 방장은 인당 개수와 상관없이 곡을 원하는 만큼 올릴 수 있어요'
+        }
+        checked={draft.leader_unlimited}
+        onChange={(v) => set({ leader_unlimited: v, ...(v ? { anonymous_songs: false } : {}) })}
+        disabled={l.voteRules || (unlimitedBlocked && !draft.leader_unlimited)}
+      />
+      {problem && (
+        <p className="form-error small" role="alert">
+          {problem}
+        </p>
+      )}
       <Toggle
         label="올린 사람 숨기기"
         hint={
           l.anonSongs
-            ? '곡 수합이 시작돼서 바꿀 수 없어요'
-            : draft.anonymous_songs
-              ? '누가 어떤 곡을 올렸는지 아무도 몰라요 (방장 포함)'
-              : '곡마다 올린 사람 이름이 보여요'
+            ? LOCKED_COLLECT
+            : draft.leader_unlimited
+              ? '방장 자유 추가 모드에서는 기명으로만 올려요. 방장 곡만 많아서 익명이어도 누가 올렸는지 티가 나요'
+              : draft.anonymous_songs
+                ? '누가 어떤 곡을 올렸는지 아무도 몰라요 (방장 포함)'
+                : '곡마다 올린 사람 이름이 보여요'
         }
         checked={draft.anonymous_songs}
         onChange={(v) => set({ anonymous_songs: v })}
-        disabled={l.anonSongs}
+        disabled={l.anonSongs || draft.leader_unlimited}
       />
       <Toggle
         label="곡 코멘트 허용"
@@ -161,16 +215,21 @@ export function RuleFields({ draft, set, status }) {
       />
       <Toggle
         label="들어본 곡만 투표"
-        hint="하이라이트를 들어야 그 곡을 고를 수 있어요 (각자 기기 기준)"
+        hint={
+          draft.youtube_enabled
+            ? '하이라이트를 들어야 그 곡을 고를 수 있어요 (각자 기기 기준)'
+            : '유튜브 링크를 안 쓰는 방에선 쓸 수 없어요 (앱 안에서 들을 플레이어가 없어서)'
+        }
         checked={draft.require_listen}
         onChange={(v) => set({ require_listen: v })}
-        disabled={l.done}
+        disabled={l.done || !draft.youtube_enabled}
       />
     </div>
   );
 }
 
-export function ScheduleFields({ draft, set, status }) {
+// 곡 수합·투표 마감일 (안내용)
+export function DeadlineFields({ draft, set, status }) {
   const l = locks(status);
   return (
     <div className="stack">
@@ -256,11 +315,17 @@ export function SettingsSummary({ band }) {
     ['투표 방식', borda ? '점수제 (순위 매기기)' : `다수결 · ${band.use_groups ? '그룹마다' : '한 사람'} ${band.votes_per_member}곡까지`],
     ['그룹', band.use_groups ? `나눠서 뽑기${band.multi_group ? ' · 여러 그룹 허용' : ''}` : '안 씀'],
     ['투표 공개', band.anonymous_votes ? '익명' : '공개 (이름 표시)'],
-    ['곡 올리기', `한 사람 ${band.songs_per_member}곡까지`],
+    ['곡 올리는 방식', band.youtube_enabled ? '유튜브 링크 + 하이라이트' : '제목 + 아티스트만'],
+    [
+      '곡 개수',
+      `${band.songs_per_member === 0 ? '멤버는 안 올림' : `한 사람 ${band.songs_per_member}곡까지`}${
+        band.leader_unlimited ? ' · 방장은 제한 없이' : ''
+      }`,
+    ],
     ['올린 사람', band.anonymous_songs ? '숨김' : '공개'],
     ['코멘트', band.allow_comments ? '허용' : '안 받음'],
     ['투표 후 수정', band.allow_vote_change ? '허용' : '안 됨'],
-    ['들어본 곡만 투표', band.require_listen ? '켬' : '끔'],
+    ['들어본 곡만 투표', band.youtube_enabled ? (band.require_listen ? '켬' : '끔') : '안 씀 (유튜브 없음)'],
     ['곡 수합 마감', fmtDeadline(band.collect_deadline) || '안 정함'],
     ['투표 마감', fmtDeadline(band.vote_deadline) || '안 정함'],
   ];
@@ -292,6 +357,8 @@ const KEYS = [
   'multi_group',
   'join_approval',
   'require_listen',
+  'youtube_enabled',
+  'leader_unlimited',
   'lineup',
 ];
 

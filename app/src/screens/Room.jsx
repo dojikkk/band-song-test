@@ -2,7 +2,8 @@
 //  1) 방장/참여자 화면을 따로 만들지 않음 → 공용 화면[C] + 방장에게만 오버레이[D]
 //  2) 설정[B]과 진행[C]은 시간축으로 분리 → 설정중이면 방장은 설정 마법사, 멤버는 대기 화면
 //  3) [C]는 한 자리가 status에 따라 변신 → 곡 수합 / 투표 / 결과
-//  V2: 곡 탭 옆에 '파트'(확정 후)·'합주 일정' 탭, 승인 대기자는 대기 화면
+//  V2: 확정 후 곡 탭 옆에 '파트' 탭, 승인 대기자는 대기 화면
+//  V3: 유튜브 링크를 안 쓰는 방은 미니 플레이어 없이 제목·아티스트만
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Icon from '../components/Icon';
 import StatusSteps from '../components/StatusSteps';
@@ -23,7 +24,6 @@ import SettingsSheet from './room/SettingsSheet';
 import MeSheet, { ChangePinSheet } from './room/MeSheet';
 import GroupSheet from './room/GroupSheet';
 import Parts from './room/Parts';
-import Schedule from './room/Schedule';
 import PendingRoom from './PendingRoom';
 
 const SONG_TAB_LABEL = { collecting: '곡 수합', voting: '투표', done: '결과' };
@@ -170,20 +170,17 @@ function RoomInner({ room, onExit, onExpired }) {
     );
   }
 
-  // 탭: 곡(단계별) / 파트(확정 후) / 합주 일정
+  // 탭: 곡(단계별) / 파트(확정 후)
   const myOpenSlots =
     band.status === 'done'
       ? state.slots.filter((x) => state.songs.some((s) => s.id === x.song_id && s.selected) && !x.assignee).length
       : 0;
-  const todayStr = new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD (내 기기 기준)
-  const upcomingRehearsals = state.rehearsals.filter((r) => r.day >= todayStr).length;
   const tabs =
     band.status === 'setup'
       ? []
       : [
           { key: 'songs', label: SONG_TAB_LABEL[band.status] },
           ...(band.status === 'done' ? [{ key: 'parts', label: '파트', badge: myOpenSlots ? `미정 ${myOpenSlots}` : null }] : []),
-          { key: 'schedule', label: '합주 일정', badge: upcomingRehearsals || null },
         ];
   const activeTab = tabs.some((t) => t.key === tab) ? tab : 'songs';
 
@@ -252,13 +249,12 @@ function RoomInner({ room, onExit, onExpired }) {
           {activeTab === 'songs' && band.status === 'voting' && <Voting {...common} />}
           {activeTab === 'songs' && band.status === 'done' && <Results {...common} />}
           {activeTab === 'parts' && <Parts {...common} onEditSettings={() => openSettings(null)} />}
-          {activeTab === 'schedule' && <Schedule {...common} />}
         </main>
       </div>
 
       <div className="dock" ref={dockRef}>
         <div ref={setBarEl} />
-        <MiniPlayer />
+        {band.youtube_enabled && <MiniPlayer />}
       </div>
       {sheets}
     </DockCtx.Provider>

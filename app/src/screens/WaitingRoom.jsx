@@ -10,7 +10,11 @@ export default function WaitingRoom({ state }) {
       </div>
       <h2 className="h-md">방장이 방을 준비하고 있어요</h2>
       <p className="muted">
-        준비가 끝나면 이 화면이 곡 올리기 화면으로 바뀌어요. 그동안 어떤 곡을 올릴지 유튜브 링크를 골라 두면 좋아요.
+        {band.songs_per_member === 0
+          ? '이 방은 방장이 후보곡을 올리고, 멤버는 듣고 투표만 해요. 준비가 끝나면 이 화면이 후보곡 화면으로 바뀌어요.'
+          : band.youtube_enabled === false
+            ? '준비가 끝나면 이 화면이 곡 올리기 화면으로 바뀌어요. 그동안 올릴 곡의 제목과 아티스트를 생각해 두면 좋아요.'
+            : '준비가 끝나면 이 화면이 곡 올리기 화면으로 바뀌어요. 그동안 어떤 곡을 올릴지 유튜브 링크를 골라 두면 좋아요.'}
       </p>
       <h3 className="section-title">
         들어온 사람 {members.length}/{band.max_members}
