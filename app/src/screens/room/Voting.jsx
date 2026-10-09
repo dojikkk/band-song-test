@@ -1,9 +1,11 @@
 // [C-2] 투표 — 그룹마다 따로 제출
 //  · 다수결: 그룹마다 마음에 드는 곡 최대 N곡 고르기
-//  · 점수제(보르다): 좋은 순서대로 눌러서 순위 → 1등 n점 … 꼴등 1점. 전부 매겨야 제출 가능
-//  · 청취 후 투표(옵션): 이 기기에서 들어본 곡만 고를 수 있음
+//  · 점수제(보르다): 곡을 줄 세우기. 맨 위가 1위(n점) … 맨 아래가 꼴찌(1점).
+//    ▲▼ 버튼으로 한 칸씩, ⤒로 맨 위로. 처음 순서는 사람마다 무작위로 섞음
+//    (모두 같은 순서로 시작하면 그대로 낸 표가 먼저 올라온 곡에 몰리니까)
+//  · 청취 후 투표(옵션): 이 기기에서 들어본 곡만 고를 수 있음. 점수제는 전부 들어야 제출
 // 고른 내용은 내 화면에만 있다가 "제출"을 눌러야 DB로 감
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Icon from '../../components/Icon';
 import SongCard from '../../components/SongCard';
 import { DockBar } from '../../components/Dock';
@@ -15,6 +17,27 @@ import { usePlayer } from '../../player/PlayerContext';
 
 const same = (a = [], b = [], ordered) =>
   a.length === b.length && (ordered ? a.every((x, i) => x === b[i]) : a.every((x) => b.includes(x)));
+
+const sameSet = (a = [], b = []) => a.length === b.length && a.every((x) => b.includes(x));
+
+// 사람·그룹마다 늘 같은 무작위 순서 (새로고침해도 안 바뀜)
+function seededShuffle(ids, seedText) {
+  let h = 2166136261;
+  for (let i = 0; i < seedText.length; i++) h = Math.imul(h ^ seedText.charCodeAt(i), 16777619) >>> 0;
+  const rand = () => {
+    h = (h + 0x6d2b79f5) >>> 0;
+    let t = h;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const out = [...ids];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
 
 export default function Voting({ state, token, notify }) {
   const { band, groups } = state;
@@ -31,6 +54,14 @@ export default function Voting({ state, token, notify }) {
   const prevSaved = useRef(saved);
   const [busy, setBusy] = useState(false);
 
+  // 점수제 줄 세우기: 순서를 바꾼 카드가 손가락 밑에 그대로 있게 화면을 맞춰 줌
+  // (안 그러면 ▲를 연달아 누를 때 방금 자리를 바꾼 옆 카드의 버튼을 누르게 됨)
+  const anchor = useRef(null); // { id, top }
+  // 화면을 다 못 맞춰 줄 때(페이지 맨 위 근처)는 손가락 밑에 옆 카드가 옴 → 연타가 되돌리기가 되지 않게
+  // 방금 밀려난 옆 카드는 잠깐(0.5초) 안 움직이게 막음
+  const lastMove = useRef({ other: null, at: 0 });
+  const [flash, setFlash] = useState(null);
+
   // 저장된 표가 "바뀐 그룹"만 화면 선택을 맞춤 (다른 그룹에서 고르던 건 그대로 둠)
   useEffect(() => {
     const prev = prevSaved.current;
@@ -45,6 +76,36 @@ export default function Voting({ state, token, notify }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedKey]);
 
+  useLayoutEffect(() => {
+    const a = anchor.current;
+    if (!a) return;
+    anchor.current = null;
+    const el = document.querySelector(`[data-rank-id="${a.id}"]`);
+    if (el) window.scrollBy(0, el.getBoundingClientRect().top - a.top);
+  });
+
+  useEffect(() => {
+    if (!flash) return undefined;
+    const t = setTimeout(() => setFlash(null), 650);
+    return () => clearTimeout(t);
+  }, [flash]);
+
+  // 점수제: 기준 순서 = 낸 표가 있으면 그 순서, 없으면 나만의 무작위 순서
+  const baseOrder = (g) => {
+    const ids = songsInGroup(state, g).map((s) => s.id);
+    const sv = saved[g.id] || [];
+    if (sameSet(sv, ids)) return sv;
+    return seededShuffle(ids, `${state.me.id}:${g.id}`);
+  };
+  // 지금 화면의 선택(다수결) / 순서(점수제)
+  const current = (g) => {
+    const d = drafts[g.id] || [];
+    if (!borda) return d;
+    const base = baseOrder(g);
+    return sameSet(d, base) ? d : base;
+  };
+  const isDirty = (g) => (borda ? !same(current(g), baseOrder(g), true) : !same(current(g), saved[g.id] || [], false));
+
   const firstOpen = groups.find((g) => !(saved[g.id] || []).length)?.id ?? groups[0]?.id;
   const [activeId, setActiveId] = useState(firstOpen);
   const group = groups.find((g) => g.id === activeId) || groups[0];
@@ -52,11 +113,11 @@ export default function Voting({ state, token, notify }) {
 
   const list = songsInGroup(state, group);
   const n = list.length;
-  const draft = drafts[group.id] || [];
+  const draft = current(group);
   const mine = saved[group.id] || [];
   const submitted = mine.length > 0;
   const locked = submitted && !band.allow_vote_change;
-  const dirty = !same(draft, mine, borda);
+  const dirty = isDirty(group);
   const doneGroups = groups.filter((g) => (saved[g.id] || []).length > 0).length;
   const members = activeMembers(state);
   const votedCount = members.filter((m) => m.voted).length;
@@ -64,7 +125,10 @@ export default function Voting({ state, token, notify }) {
   const setDraft = (ids) => setDrafts((d) => ({ ...d, [group.id]: ids }));
 
   const needsListen = (song) => band.require_listen && !listened.has(song.id);
+  const listenedHere = list.filter((s) => listened.has(s.id)).length;
+  const allListened = !band.require_listen || listenedHere === n;
 
+  // 다수결: 눌러서 고르기/빼기
   const tap = (song) => {
     if (locked) return toast('이 방은 투표 후 수정이 꺼져 있어요.');
     if (needsListen(song)) {
@@ -72,11 +136,27 @@ export default function Voting({ state, token, notify }) {
       return toast('먼저 들어 보고 골라 주세요. 하이라이트를 끝까지 들으면 고를 수 있어요.');
     }
     const has = draft.includes(song.id);
-    if (has) return setDraft(draft.filter((id) => id !== song.id)); // 점수제: 뒤 순위가 한 칸씩 당겨짐
-    if (!borda && draft.length >= limit) {
+    if (has) return setDraft(draft.filter((id) => id !== song.id));
+    if (draft.length >= limit) {
       return toast(`최대 ${limit}곡까지 고를 수 있어요. 다른 곡을 먼저 빼 주세요.`);
     }
     setDraft([...draft, song.id]);
+  };
+
+  // 점수제: 순서 바꾸기
+  const move = (id, to) => {
+    if (locked) return toast('이 방은 투표 후 수정이 꺼져 있어요.');
+    const from = draft.indexOf(id);
+    if (from < 0 || to < 0 || to >= draft.length || to === from) return;
+    if (lastMove.current.other === id && Date.now() - lastMove.current.at < 500) return;
+    const el = document.querySelector(`[data-rank-id="${id}"]`);
+    anchor.current = el ? { id, top: el.getBoundingClientRect().top } : null;
+    const next = [...draft];
+    next.splice(from, 1);
+    next.splice(to, 0, id);
+    lastMove.current = { other: next[from], at: Date.now() };
+    setDraft(next);
+    setFlash(id);
   };
 
   const submit = async () => {
@@ -87,7 +167,10 @@ export default function Voting({ state, token, notify }) {
       await notify();
       // 아직 안 한 그룹이 있으면 그쪽으로
       const nextOpen = groups.find((g) => g.id !== group.id && !(saved[g.id] || []).length);
-      if (nextOpen) setActiveId(nextOpen.id);
+      if (nextOpen) {
+        setActiveId(nextOpen.id);
+        window.scrollTo({ top: 0 });
+      }
     } catch (e) {
       toast(errorText(e), 'error');
       await notify();
@@ -96,19 +179,18 @@ export default function Voting({ state, token, notify }) {
     }
   };
 
-  const canSubmit = borda ? draft.length === n : draft.length > 0;
-  const listenedHere = list.filter((s) => listened.has(s.id)).length;
+  const canSubmit = borda ? draft.length === n && allListened && (dirty || !submitted) : draft.length > 0;
+  const byId = new Map(list.map((s) => [s.id, s]));
+  const shown = borda ? draft.map((id) => byId.get(id)).filter(Boolean) : list;
 
   return (
     <>
       <section className="block">
         <div className="vote-intro">
-          <h2 className="h-md">
-            {borda ? '좋은 순서대로 순위를 매겨요' : `마음에 드는 곡을 ${limit}곡까지 골라요`}
-          </h2>
+          <h2 className="h-md">{borda ? '좋은 순서대로 줄을 세워요' : `마음에 드는 곡을 ${limit}곡까지 골라요`}</h2>
           <p className="muted small">
             {borda
-              ? `1등부터 차례로 누르면 순위가 붙어요. 1등 ${n}점, 꼴등 1점. ${tabs ? '그룹 안 ' : ''}곡을 전부 매겨야 제출돼요.`
+              ? `맨 위가 1위(${n}점), 맨 아래가 꼴찌(1점)예요. ▲▼ 버튼으로 순서를 바꾸고 제출해요. 처음 순서는 사람마다 무작위로 섞여 있어요.${tabs ? ' 그룹마다 따로 내요.' : ''}`
               : tabs
                 ? '그룹마다 따로 골라요.'
                 : ''}{' '}
@@ -123,7 +205,7 @@ export default function Voting({ state, token, notify }) {
           </p>
           {band.require_listen && (
             <p className="small listen-note">
-              들어본 곡만 고를 수 있어요 · 이 그룹 {n}곡 중 {listenedHere}곡 들음
+              {borda ? '전부 들어 봐야 제출할 수 있어요' : '들어본 곡만 고를 수 있어요'} · 이 그룹 {n}곡 중 {listenedHere}곡 들음
             </p>
           )}
         </div>
@@ -132,7 +214,7 @@ export default function Voting({ state, token, notify }) {
           <div className="group-tabs" role="tablist" aria-label="그룹">
             {groups.map((g) => {
               const isDone = (saved[g.id] || []).length > 0;
-              const isDirty = !same(drafts[g.id] || [], saved[g.id] || [], borda);
+              const changed = isDirty(g);
               return (
                 <button
                   key={g.id}
@@ -141,19 +223,69 @@ export default function Voting({ state, token, notify }) {
                   className={`group-tab${g.id === group.id ? ' on' : ''}${isDone ? ' done' : ''}`}
                   onClick={() => setActiveId(g.id)}
                 >
-                  {isDone && !isDirty && <Icon name="check" size={14} />}
+                  {isDone && !changed && <Icon name="check" size={14} />}
                   {g.name}
                   <small>{g.song_ids.length}</small>
-                  {isDirty && <span className="dot" aria-label="저장 안 함" />}
+                  {changed && <span className="dot" aria-label="저장 안 함" />}
                 </button>
               );
             })}
           </div>
         )}
 
-        {list.map((s, i) => {
-          const pos = draft.indexOf(s.id);
-          const on = pos >= 0;
+        {shown.map((s, i) => {
+          if (borda) {
+            const listenFirst = needsListen(s);
+            return (
+              <div key={s.id} data-rank-id={s.id} className={`rank-item${flash === s.id ? ' flash' : ''}`}>
+                <SongCard
+                  song={s}
+                  queue={shown}
+                  badge={<span className={`rank-badge on${i === 0 ? ' top' : ''}`}>{i + 1}위</span>}
+                >
+                  <div className="rank-actions">
+                    <span className="rank-points">
+                      {n - i}점
+                      {listenFirst && (
+                        <button className="text-btn listen-link" onClick={() => player.play(s, shown)}>
+                          <Icon name="play" size={12} /> 아직 안 들음
+                        </button>
+                      )}
+                    </span>
+                    <button
+                      className="rank-btn"
+                      onClick={() => move(s.id, 0)}
+                      disabled={locked || i === 0}
+                      aria-label={`${s.title} 맨 위로`}
+                      title="맨 위로"
+                    >
+                      <Icon name="top" size={18} />
+                    </button>
+                    <button
+                      className="rank-btn"
+                      onClick={() => move(s.id, i - 1)}
+                      disabled={locked || i === 0}
+                      aria-label={`${s.title} 한 칸 위로`}
+                      title="한 칸 위로"
+                    >
+                      <Icon name="up" size={18} />
+                    </button>
+                    <button
+                      className="rank-btn"
+                      onClick={() => move(s.id, i + 1)}
+                      disabled={locked || i === n - 1}
+                      aria-label={`${s.title} 한 칸 아래로`}
+                      title="한 칸 아래로"
+                    >
+                      <Icon name="down" size={18} />
+                    </button>
+                  </div>
+                </SongCard>
+              </div>
+            );
+          }
+
+          const on = draft.includes(s.id);
           const listenFirst = needsListen(s);
           return (
             <SongCard
@@ -161,13 +293,7 @@ export default function Voting({ state, token, notify }) {
               song={s}
               queue={list}
               className={on ? 'is-picked' : ''}
-              badge={
-                borda && on ? (
-                  <span className="rank-badge on">{pos + 1}위</span>
-                ) : (
-                  <span className="song-no">{i + 1}</span>
-                )
-              }
+              badge={<span className="song-no">{i + 1}</span>}
             >
               <button
                 className={`pick-btn${on ? ' on' : ''}${listenFirst ? ' listen' : ''}`}
@@ -179,14 +305,6 @@ export default function Voting({ state, token, notify }) {
                   <>
                     <Icon name="play" size={15} /> 먼저 들어보기
                   </>
-                ) : borda ? (
-                  on ? (
-                    <>
-                      {pos + 1}위 · {n - pos}점 <small>누르면 빼기</small>
-                    </>
-                  ) : (
-                    `${draft.length + 1}위로 매기기`
-                  )
                 ) : on ? (
                   <>
                     <Icon name="check" size={16} /> 골랐어요
@@ -209,7 +327,10 @@ export default function Voting({ state, token, notify }) {
             {tabs && doneGroups < groups.length ? (
               <button
                 className="primary-btn small"
-                onClick={() => setActiveId(groups.find((g) => !(saved[g.id] || []).length)?.id)}
+                onClick={() => {
+                  setActiveId(groups.find((g) => !(saved[g.id] || []).length)?.id);
+                  window.scrollTo({ top: 0 });
+                }}
               >
                 남은 그룹 하기
               </button>
@@ -220,15 +341,25 @@ export default function Voting({ state, token, notify }) {
         ) : (
           <div className="bar-row">
             <span className="bar-count">
-              <strong>{draft.length}</strong>/{borda ? n : limit}곡 {borda ? '순위 매김' : '골랐어요'}
+              {borda ? (
+                !allListened ? (
+                  <>
+                    들은 곡 <strong>{listenedHere}</strong>/{n}
+                  </>
+                ) : (
+                  <>
+                    <strong>{n}</strong>곡 · 위에서부터 1위
+                  </>
+                )
+              ) : (
+                <>
+                  <strong>{draft.length}</strong>/{limit}곡 골랐어요
+                </>
+              )}
             </span>
-            {(submitted || (borda && draft.length > 0)) && (
-              <button
-                className="ghost-btn small"
-                onClick={() => setDraft(submitted ? mine : [])}
-                disabled={busy}
-              >
-                {submitted ? '되돌리기' : '다시 매기기'}
+            {(borda ? dirty : submitted) && (
+              <button className="ghost-btn small" onClick={() => setDraft(borda ? baseOrder(group) : mine)} disabled={busy}>
+                {submitted ? '되돌리기' : '처음 순서로'}
               </button>
             )}
             <Button className="primary-btn small" busy={busy} onClick={submit} disabled={!canSubmit || locked}>

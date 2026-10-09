@@ -37,6 +37,9 @@ const PATHS = {
   baton: <path d="M4 20L15 9M14 4.5a2.5 2.5 0 1 1 5.5 5.5 2.5 2.5 0 0 1-5.5-5.5z" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" />,
   edit: <path d="M5 19h4l10-10-4-4L5 15v4zM13 7l4 4" stroke="currentColor" strokeWidth="2" fill="none" strokeLinejoin="round" />,
   trash: <path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />,
+  up: <path d="M6 15l6-6 6 6" stroke="currentColor" strokeWidth="2.4" fill="none" strokeLinecap="round" strokeLinejoin="round" />,
+  down: <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.4" fill="none" strokeLinecap="round" strokeLinejoin="round" />,
+  top: <path d="M6 5h12M6 17l6-6 6 6" stroke="currentColor" strokeWidth="2.4" fill="none" strokeLinecap="round" strokeLinejoin="round" />,
   note: (
     <>
       <path d="M9.5 17.5V6.2l9-2v11.3" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
