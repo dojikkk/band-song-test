@@ -62,6 +62,8 @@ const MESSAGES = {
   NEED_ARTIST: '아티스트를 적어 주세요.',
   BAD_ARTIST: '아티스트는 60글자까지 쓸 수 있어요.',
   DUPLICATE_TITLE: '같은 제목·아티스트의 곡이 이미 올라와 있어요.',
+  // 투표 제한
+  VOTE_BLOCKED: '방장이 이 그룹 투표에서 빼 두었어요. 곡은 들어 볼 수 있어요.',
 };
 
 export class AppError extends Error {
@@ -152,6 +154,10 @@ export const renameGroup = (token, groupId, name) =>
 export const deleteGroup = (token, groupId) => rpc('delete_group', { p_token: token, p_group_id: groupId });
 export const setSongGroups = (token, songId, groupIds) =>
   rpc('set_song_groups', { p_token: token, p_song_id: songId, p_group_ids: groupIds });
+
+// 투표 제한 (방장): 이 사람은 이 그룹에 투표 못 함. 투표 중에 막으면 이미 낸 표는 지워짐
+export const setVoteBlock = (token, groupId, memberId, blocked) =>
+  rpc('set_vote_block', { p_token: token, p_group_id: groupId, p_member_id: memberId, p_blocked: blocked });
 
 // 스트리밍 링크
 export const setSongLinks = (token, songId, links) =>

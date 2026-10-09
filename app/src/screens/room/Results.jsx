@@ -20,6 +20,7 @@ export default function Results({ state, token, notify }) {
     .map((res) => ({
       group: groups.find((g) => g.id === res.group_id),
       rows: res.rows.map((r) => ({ ...r, song: byId[r.song_id] })).filter((r) => r.song),
+      voterCount: res.voter_count, // 그룹마다 투표한 사람 수 (투표 제한이 있으면 그룹마다 다름)
     }))
     .filter((x) => x.group);
   const finals = songs.filter((s) => s.selected);
@@ -91,7 +92,7 @@ export default function Results({ state, token, notify }) {
             <div className="block-head">
               <h2 className="h-md">{tabs ? sec.group.name : borda ? '점수 순위' : '득표 순위'}</h2>
               <span className="muted small">
-                {voters}명 투표{borda && ` · 1등 ${sec.rows.length}점`}
+                {sec.voterCount ?? voters}명 투표{borda && ` · 1등 ${sec.rows.length}점`}
               </span>
             </div>
             {sec.rows.map((r) => {

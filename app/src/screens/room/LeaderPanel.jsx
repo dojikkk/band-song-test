@@ -1,5 +1,5 @@
 // [D] 방장 전용 오버레이 — 진행 중 어디서나 열림
-//  D-2 진행 제어: 단계 수동 마감 (+ 참여 현황, 독촉 메시지, 그룹 나누기)
+//  D-2 진행 제어: 단계 수동 마감 (+ 참여 현황, 독촉 메시지, 그룹 나누기, 투표 제한)
 //  D-1 멤버 관리: 입장 승인/거절, PIN 초기화, 내보내기, 참여코드 새로 만들기
 //  ⚠ 방장도 참여자 → 마감 전 투표 결과는 방장도 못 봄 (DB가 안 내려줌)
 import { useState } from 'react';
@@ -14,7 +14,7 @@ import {
   removeMember,
   resetPin,
 } from '../../lib/api';
-import { groupsBySong } from '../../lib/selectors';
+import { groupsBySong, voteGroupCount } from '../../lib/selectors';
 import { dday, fmtDeadline } from '../../lib/time';
 
 export function groupStatus(groupCount, songCount, ungrouped) {
@@ -38,7 +38,7 @@ const NEXT = {
   },
 };
 
-export default function LeaderPanel({ state, token, notify, onClose, onEditSettings, onOpenGroups }) {
+export default function LeaderPanel({ state, token, notify, onClose, onEditSettings, onOpenGroups, onOpenBlocks }) {
   const { band, me } = state;
   const toast = useToast();
   const [confirming, setConfirming] = useState(false);
@@ -58,16 +58,20 @@ export default function LeaderPanel({ state, token, notify, onClose, onEditSetti
   // 인당 0곡인 방: 곡 수합은 방장 혼자 → "곡 낸 사람" 현황 대신 후보곡 수만
   const leaderOnly = band.songs_per_member === 0;
 
-  // 참여 현황: 곡 수합이면 "곡 낸 사람", 투표면 "모든 그룹 투표 끝낸 사람"
+  // 투표 현황엔 투표할 그룹이 하나라도 있는 사람만 셈 (투표 제한으로 전부 빠진 사람 제외)
+  const counted = band.status === 'voting' ? members.filter((m) => voteGroupCount(state, m) > 0) : members;
+
+  // 참여 현황: 곡 수합이면 "곡 낸 사람", 투표면 "투표할 그룹을 다 끝낸 사람"
   const pending =
     band.status === 'collecting' && leaderOnly
       ? []
       : band.status === 'collecting'
-      ? members.filter((m) => m.song_count === 0)
-      : band.status === 'voting'
-        ? members.filter((m) => !m.voted)
-        : [];
-  const doneCount = members.length - pending.length;
+        ? members.filter((m) => m.song_count === 0)
+        : band.status === 'voting'
+          ? counted.filter((m) => !m.voted)
+          : [];
+  const doneCount = counted.length - pending.length;
+  const blockCount = (state.vote_blocks || []).length;
   const progressLabel = band.status === 'collecting' ? '곡을 올린 사람' : '투표 끝낸 사람';
   const deadline = band.status === 'collecting' ? band.collect_deadline : band.vote_deadline;
 
@@ -181,12 +185,12 @@ export default function LeaderPanel({ state, token, notify, onClose, onEditSetti
           <div className="lp-progress">
             <div className="lp-progress-top">
               <span>
-                {progressLabel} <strong>{doneCount}</strong>/{members.length}
+                {progressLabel} <strong>{doneCount}</strong>/{counted.length}
               </span>
               {deadline && <span className="deadline-chip">{dday(deadline)}</span>}
             </div>
             <div className="progress-line">
-              <span style={{ width: `${(doneCount / Math.max(1, members.length)) * 100}%` }} />
+              <span style={{ width: `${(doneCount / Math.max(1, counted.length)) * 100}%` }} />
             </div>
             {pending.length > 0 && (
               <div className="lp-pending">
@@ -206,6 +210,22 @@ export default function LeaderPanel({ state, token, notify, onClose, onEditSetti
               <strong>그룹 나누기</strong>
               <small>
                 {groupStatus(state.groups.length, state.songs.length, ungrouped)}
+              </small>
+            </span>
+            <Icon name="chevron" size={18} />
+          </button>
+        )}
+
+        {band.status !== 'done' && (band.use_groups || state.groups.length > 0) && (
+          <button className="row-link boxed" onClick={onOpenBlocks}>
+            <span>
+              <strong>투표 제한</strong>
+              <small>
+                {state.groups.length === 0
+                  ? '그룹을 만들면 그룹마다 투표할 사람을 정할 수 있어요'
+                  : blockCount === 0
+                    ? '그룹마다 투표할 사람 정하기 · 지금은 모두 투표'
+                    : `투표에서 빠진 사람 ${blockCount}건 · 눌러서 바꾸기`}
               </small>
             </span>
             <Icon name="chevron" size={18} />
@@ -312,11 +332,13 @@ export default function LeaderPanel({ state, token, notify, onClose, onEditSetti
                   </span>
                   <span className="m-state small muted">
                     {band.status === 'voting' || band.status === 'done'
-                      ? m.voted
-                        ? '투표함'
-                        : state.groups.length > 1 && m.voted_groups > 0
-                          ? `투표 ${m.voted_groups}/${state.groups.length}`
-                          : '투표 전'
+                      ? voteGroupCount(state, m) === 0
+                        ? '투표 안 함'
+                        : m.voted
+                          ? '투표함'
+                          : voteGroupCount(state, m) > 1 && m.voted_groups > 0
+                            ? `투표 ${m.voted_groups}/${voteGroupCount(state, m)}`
+                            : '투표 전'
                       : `곡 ${m.song_count}개`}
                   </span>
                   {m.id !== me.id && (

@@ -41,3 +41,14 @@ export function memberName(state, id) {
 }
 
 export const activeMembers = (state) => state.members.filter((m) => m.status !== 'pending');
+
+// 투표 제한: 이 사람이 투표에서 빠진 그룹 id 모음
+export function blockedGroupIds(state, memberId) {
+  return new Set((state.vote_blocks || []).filter((b) => b.member_id === memberId).map((b) => b.group_id));
+}
+
+// 이 사람이 투표할 수 있는 그룹 수 (서버가 안 주면 = 전체 그룹 수)
+export const voteGroupCount = (state, m) => m.vote_groups ?? (state.groups || []).length;
+
+// 투표 현황에 셀 사람: 투표할 그룹이 하나라도 있는 멤버
+export const eligibleVoters = (state) => activeMembers(state).filter((m) => voteGroupCount(state, m) > 0);

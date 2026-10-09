@@ -9,6 +9,7 @@
 | v1 | 참여코드+이름+PIN 입장, 방장 설정 4단계, 곡 수합(유튜브+하이라이트+코멘트), 다수결 투표, 결과·선정, PIN 초기화 |
 | v2 | **점수제(보르다)**, **그룹(파트) 분류**, **입장 승인·내보내기·참여코드 재발급**, **파트 배분**, **Spotify·Apple Music·멜론 링크**, 청취 후 투표 옵션 |
 | v3 | **유튜브 링크 사용 켜기/끄기** (끄면 제목+아티스트만), **방장 자유 추가 모드**, **인당 0곡** (방장만 후보곡을 올리고 멤버는 듣기·투표만). 합주 일정 기능은 뺌 |
+| v3.1 | **점수제 줄 세우기**(⤒▲▼ + 상세보기), **투표 제한** (방장이 그룹마다 투표할 사람을 정함) |
 
 ```
 React (Vite)  ──RPC 호출──▶  Supabase (Postgres + DB 함수)      배포: Vercel
@@ -40,6 +41,7 @@ DB 내용은 `supabase/migrations/` 안의 파일들이야. 번호 순서대로 
 - `20261006120000_init.sql` — v1: 테이블 5개 + 함수 14개
 - `20261007000000_v2.sql` — v2: 그룹·점수·승인·파트 (기존 데이터는 그대로 두고 덧붙임)
 - `20261009000000_v3.sql` — v3: 유튜브 사용 옵션·방장 자유 추가·인당 0곡 + 규칙(CHECK), 합주 일정 테이블·함수 삭제
+- `20261010000000_vote_blocks.sql` — 투표 제한: `vote_blocks` 테이블 + `set_vote_block` 함수 (추가만 해서 진행 중인 방에 적용해도 안전)
 
 **연동 켜기 (한 번만)** — Supabase 대시보드 → 프로젝트 → **Project Settings → Integrations → GitHub**
 1. **Authorize GitHub** → `dojikkk/band-song-test` 선택
@@ -91,7 +93,8 @@ app/
 │  └─ migrations/             ← DB 변경 이력. 파일 하나 = 변경 한 번
 │     ├─ 20261006120000_init.sql   ← v1: 테이블 + 잠금(RLS) + DB 함수
 │     ├─ 20261007000000_v2.sql     ← v2: 그룹·점수제·승인·파트·링크
-│     └─ 20261009000000_v3.sql     ← v3: 유튜브 사용 옵션·방장 자유 추가·인당 0곡, 합주 일정 삭제
+│     ├─ 20261009000000_v3.sql     ← v3: 유튜브 사용 옵션·방장 자유 추가·인당 0곡, 합주 일정 삭제
+│     └─ 20261010000000_vote_blocks.sql ← 투표 제한
 ├─ src/
 │  ├─ lib/
 │  │  ├─ api.js               ← DB 함수 호출을 한곳에 모음 + 에러코드 → 한국어 문장
@@ -112,6 +115,7 @@ app/
 │  │  └─ room/
 │  │     ├─ Collecting / AddSongSheet    ← [C-1] 곡 수합
 │  │     ├─ GroupSheet                   ← 그룹 나누기 (방장)
+│  │     ├─ VoteBlockSheet               ← 투표 제한: 그룹마다 투표할 사람 (방장)
 │  │     ├─ Voting                       ← [C-2] 투표 (다수결 / 순위 매기기, 그룹별)
 │  │     ├─ Results                      ← [C-3] 결과·확정 (그룹별)
 │  │     ├─ Parts                        ← 파트 탭: 내 파트, 손들기, 배정
@@ -207,6 +211,7 @@ DB는 "지금 모습"이 아니라 **"바뀐 순서"를 파일로** 남겨. 그�
 | 유튜브 링크 사용 | 방 설정 켜기/끄기. 켜면 지금처럼 링크+하이라이트+미니 플레이어. 끄면 곡은 **제목+아티스트(필수)**만, 플레이어·하이라이트 화면은 안 보이고 곡 카드의 "음악 앱에서 듣기"로 각자 찾아 들음. **곡 수합이 시작되면 고정** (곡마다 형식이 섞이지 않게). 끄면 "들어본 곡만 투표"도 같이 꺼짐 |
 | 방장 자유 추가 모드 | 켜면 방장은 인당 개수와 상관없이 곡을 올릴 수 있음. 켜는 순간 **"올린 사람 숨기기"는 자동으로 꺼지고 못 켬** (방장 곡만 많아서 익명이어도 티가 남). 이미 익명으로 곡을 받는 중인 방에선 못 켬 |
 | 인당 0곡 | 멤버는 곡을 못 올리고 듣기·투표만. 방장이 후보곡을 전부 올리는 방 |
+| 투표 제한 | 방장 메뉴 → **투표 제한**. 그룹마다 멤버 이름을 눌러 투표에서 빼거나 다시 넣음. 빠진 사람은 그 그룹 곡을 듣기만 하고 투표 칸이 없음 (DB도 `VOTE_BLOCKED`로 막음). 설정중·곡 수합·투표 중에 바꿀 수 있고 확정되면 고정. **투표 중에 빼면 그 사람이 그 그룹에 낸 표는 지워짐**(한 번 더 확인). "투표 완료"·참여 현황은 그 사람이 투표할 수 있는 그룹만 셈. 결과에는 그룹마다 투표한 인원이 따로 나옴 |
 | 막는 조합 | **인당 0곡 + 방장 자유 추가 모드 꺼짐** = 아무도 못 올림 → 설정 화면에서 "인당 0곡이면 방장 자유 추가 모드를 켜야 해요" 안내 + 저장 막음, DB도 `CHECK`로 막음 |
 
 추가로 정한 것:
@@ -242,7 +247,7 @@ delete from public.bands where invite_code = 'ABC123';   -- 멤버·곡·투표�
 
 **DB를 통째로 비우고 처음부터 다시** (데이터 전부 사라짐, 신중히)
 ```sql
-drop table if exists public.slot_requests, public.song_slots, public.song_group_items, public.song_groups,
+drop table if exists public.vote_blocks, public.slot_requests, public.song_slots, public.song_group_items, public.song_groups,
   public.votes, public.songs, public.sessions, public.members, public.bands cascade;
 drop schema if exists private cascade;
 delete from supabase_migrations.schema_migrations;

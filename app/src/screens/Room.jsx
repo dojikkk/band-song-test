@@ -23,6 +23,7 @@ import LeaderPanel from './room/LeaderPanel';
 import SettingsSheet from './room/SettingsSheet';
 import MeSheet, { ChangePinSheet } from './room/MeSheet';
 import GroupSheet from './room/GroupSheet';
+import VoteBlockSheet from './room/VoteBlockSheet';
 import Parts from './room/Parts';
 import PendingRoom from './PendingRoom';
 
@@ -38,7 +39,7 @@ export default function Room({ room, onExit, onExpired }) {
 
 function RoomInner({ room, onExit, onExpired }) {
   const { state, loadError, refresh, notify } = useBandState(room.token, room.band_id, onExpired);
-  const [sheet, setSheet] = useState(null); // 'leader' | 'settings' | 'me' | 'groups'
+  const [sheet, setSheet] = useState(null); // 'leader' | 'settings' | 'me' | 'groups' | 'blocks'
   const [sheetBack, setSheetBack] = useState(null); // 설정 시트를 닫으면 돌아갈 곳
   const [tab, setTab] = useState('songs');
   const [barEl, setBarEl] = useState(null);
@@ -141,7 +142,11 @@ function RoomInner({ room, onExit, onExpired }) {
           onClose={() => setSheet(null)}
           onEditSettings={() => openSettings('leader')}
           onOpenGroups={() => setSheet('groups')}
+          onOpenBlocks={() => setSheet('blocks')}
         />
+      )}
+      {sheet === 'blocks' && (
+        <VoteBlockSheet {...common} onClose={() => setSheet('leader')} onOpenGroups={() => setSheet('groups')} />
       )}
       {sheet === 'settings' && <SettingsSheet {...common} onClose={() => setSheet(sheetBack)} />}
       {sheet === 'groups' && <GroupSheet {...common} onClose={() => setSheet(null)} />}

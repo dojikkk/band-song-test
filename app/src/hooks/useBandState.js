@@ -99,6 +99,7 @@ export function normalizeState(s) {
     dbOutdated,
     groups: s.groups ?? [],
     slots: s.slots ?? [],
+    vote_blocks: s.vote_blocks ?? [],
     my_votes: s.my_votes ?? [],
     songs: (s.songs ?? []).map((x) => ({ links: {}, ...x })),
     members: (s.members ?? []).map((m) => ({ status: 'active', parts: [], voted_groups: 0, ...m })),

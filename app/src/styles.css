@@ -503,6 +503,15 @@ code { font-family: ui-monospace, Menlo, monospace; font-size: 0.9em; background
 .chip-btn { font-size: 13px; font-weight: 650; color: var(--text-2); border: 1px solid var(--line-2); border-radius: 999px; padding: 6px 12px; min-height: 34px; }
 .chip-btn.on { background: var(--green); border-color: var(--green); color: #0b1f15; }
 .chip-btn:disabled { opacity: .5; }
+.vb-group { display: flex; flex-direction: column; gap: 8px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.vb-group:last-child { border-bottom: 0; }
+.vb-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.vb-head strong { font-size: 15px; }
+.vb-head small { color: var(--text-3); font-size: 12.5px; }
+.chip-btn.vb-chip.off { color: var(--text-3); border-style: dashed; background: transparent; }
+.chip-btn.vb-chip.off s { text-decoration-thickness: 1.5px; }
+.vb-legend.on { color: var(--green); }
+.vb-legend.off { color: var(--text-3); text-decoration: line-through; }
 .chip.removable { padding-right: 6px; }
 .chip.removable button { width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: var(--text-3); }
 .chip.removable button:hover { background: var(--panel-3); color: var(--text); }
@@ -539,6 +548,7 @@ code { font-family: ui-monospace, Menlo, monospace; font-size: 0.9em; background
 .group-tab.on small { color: #15111f; opacity: .7; }
 .group-tab.done:not(.on) { border-color: rgba(108, 212, 161, .45); color: var(--green); }
 .group-tab .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--spot); }
+.group-tab.off:not(.on) { border-style: dashed; color: var(--text-3); }
 .rank-badge { flex-shrink: 0; font-size: 12px; font-weight: 800; border-radius: 7px; padding: 1px 7px; align-self: center; }
 .rank-badge.on { background: var(--violet); color: #15111f; }
 .rank-badge.on.top { background: var(--spot); color: var(--spot-ink); }
