@@ -8,7 +8,16 @@ import { usePlayer } from '../player/PlayerContext';
 import { fmtTime, thumbUrl } from '../lib/youtube';
 import { streamLinks } from '../lib/links';
 
-export default function SongCard({ song, queue, showSubmitter = true, badge, groups, children, className = '' }) {
+export default function SongCard({
+  song,
+  queue,
+  showSubmitter = true,
+  badge,
+  groups,
+  children,
+  className = '',
+  hideTitle = false, // 점수제 상세보기처럼 제목·아티스트를 바깥에서 이미 보여 줄 때
+}) {
   const player = usePlayer();
   const [showLinks, setShowLinks] = useState(false);
   const hasVideo = Boolean(song.youtube_id);
@@ -42,12 +51,14 @@ export default function SongCard({ song, queue, showSubmitter = true, badge, gro
           </span>
         )}
         <div className="song-meta">
-          <div className="song-title">
-            {badge}
-            {song.title}
-          </div>
+          {!hideTitle && (
+            <div className="song-title">
+              {badge}
+              {song.title}
+            </div>
+          )}
           <div className="song-sub">
-            {song.artist || '아티스트 미입력'}
+            {!hideTitle && (song.artist || '아티스트 미입력')}
             {showSubmitter && (
               <span className="by">{song.mine ? '내가 올림' : song.submitter ? `${song.submitter} 추천` : '익명 추천'}</span>
             )}

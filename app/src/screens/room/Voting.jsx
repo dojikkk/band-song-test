@@ -1,7 +1,8 @@
 // [C-2] 투표 — 그룹마다 따로 제출
 //  · 다수결: 그룹마다 마음에 드는 곡 최대 N곡 고르기
 //  · 점수제(보르다): 곡을 줄 세우기. 맨 위가 1위(n점) … 맨 아래가 꼴찌(1점).
-//    ▲▼ 버튼으로 한 칸씩, ⤒로 맨 위로. 처음 순서는 사람마다 무작위로 섞음
+//    한 곡 = 얇은 한 줄. ▲▼ 버튼으로 한 칸씩, ⤒로 맨 위로. "상세보기"를 누르면 펼쳐져서
+//    썸네일(재생)·하이라이트·다른 앱 링크·코멘트가 보임. 처음 순서는 사람마다 무작위로 섞음
 //    (모두 같은 순서로 시작하면 그대로 낸 표가 먼저 올라온 곡에 몰리니까)
 //  · 청취 후 투표(옵션): 이 기기에서 들어본 곡만 고를 수 있음. 점수제는 전부 들어야 제출
 // 고른 내용은 내 화면에만 있다가 "제출"을 눌러야 DB로 감
@@ -61,6 +62,14 @@ export default function Voting({ state, token, notify }) {
   // 방금 밀려난 옆 카드는 잠깐(0.5초) 안 움직이게 막음
   const lastMove = useRef({ other: null, at: 0 });
   const [flash, setFlash] = useState(null);
+  const [openIds, setOpenIds] = useState(() => new Set()); // 상세보기 펼친 곡
+  const toggleOpen = (id) =>
+    setOpenIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   // 저장된 표가 "바뀐 그룹"만 화면 선택을 맞춤 (다른 그룹에서 고르던 건 그대로 둠)
   useEffect(() => {
@@ -236,22 +245,36 @@ export default function Voting({ state, token, notify }) {
         {shown.map((s, i) => {
           if (borda) {
             const listenFirst = needsListen(s);
+            const open = openIds.has(s.id);
+            const playing = player?.current?.id === s.id;
             return (
-              <div key={s.id} data-rank-id={s.id} className={`rank-item${flash === s.id ? ' flash' : ''}`}>
-                <SongCard
-                  song={s}
-                  queue={shown}
-                  badge={<span className={`rank-badge on${i === 0 ? ' top' : ''}`}>{i + 1}위</span>}
-                >
-                  <div className="rank-actions">
-                    <span className="rank-points">
-                      {n - i}점
-                      {listenFirst && (
-                        <button className="text-btn listen-link" onClick={() => player.play(s, shown)}>
-                          <Icon name="play" size={12} /> 아직 안 들음
-                        </button>
-                      )}
-                    </span>
+              <div
+                key={s.id}
+                data-rank-id={s.id}
+                className={`rank-item${flash === s.id ? ' flash' : ''}${open ? ' open' : ''}${playing ? ' is-current' : ''}`}
+              >
+                <div className="rank-row">
+                  <div className="rank-side">
+                    <span className={`rank-badge on${i === 0 ? ' top' : ''}`}>{i + 1}위</span>
+                    <span className="rank-pts">{n - i}점</span>
+                  </div>
+                  <button
+                    className="rank-main"
+                    onClick={() => toggleOpen(s.id)}
+                    aria-expanded={open}
+                    aria-label={`${s.title} 상세보기`}
+                  >
+                    <strong className="rank-title">{s.title}</strong>
+                    <small className="rank-sub">
+                      <span className="rank-artist">{s.artist || '아티스트 미입력'}</span>
+                      {listenFirst && <span className="rank-unheard">안 들음</span>}
+                      <span className="rank-more">
+                        {open ? '접기' : '상세보기'}
+                        <Icon name={open ? 'up' : 'down'} size={12} />
+                      </span>
+                    </small>
+                  </button>
+                  <div className="rank-btns">
                     <button
                       className="rank-btn"
                       onClick={() => move(s.id, 0)}
@@ -259,7 +282,7 @@ export default function Voting({ state, token, notify }) {
                       aria-label={`${s.title} 맨 위로`}
                       title="맨 위로"
                     >
-                      <Icon name="top" size={18} />
+                      <Icon name="top" size={17} />
                     </button>
                     <button
                       className="rank-btn"
@@ -268,7 +291,7 @@ export default function Voting({ state, token, notify }) {
                       aria-label={`${s.title} 한 칸 위로`}
                       title="한 칸 위로"
                     >
-                      <Icon name="up" size={18} />
+                      <Icon name="up" size={17} />
                     </button>
                     <button
                       className="rank-btn"
@@ -277,10 +300,11 @@ export default function Voting({ state, token, notify }) {
                       aria-label={`${s.title} 한 칸 아래로`}
                       title="한 칸 아래로"
                     >
-                      <Icon name="down" size={18} />
+                      <Icon name="down" size={17} />
                     </button>
                   </div>
-                </SongCard>
+                </div>
+                {open && <SongCard song={s} queue={shown} hideTitle className="rank-detail" />}
               </div>
             );
           }
